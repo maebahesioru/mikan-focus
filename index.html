@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍊</text></svg>">
+<title>みかんフォーカス - Mikan Focus</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #fff8e7; --card: #fffdf6; --ink: #4a3800; --accent: #f5a623;
+    --accent2: #e8890c; --leaf: #6a9e3f; --dim: #b8a86a;
+  }
+  body {
+    font-family: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif;
+    background: linear-gradient(170deg, #fff8e7 0%, #ffedc2 100%);
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; color: var(--ink); padding: 20px;
+  }
+  .app { width: 100%; max-width: 560px; }
+  header { text-align: center; margin: 12px 0 18px; }
+  h1 { font-size: 1.9rem; letter-spacing: 2px; }
+  .tagline { color: var(--dim); font-size: 0.9rem; margin-top: 4px; }
+  .card {
+    background: var(--card); border-radius: 20px; padding: 26px 24px;
+    box-shadow: 0 4px 24px rgba(180, 140, 40, 0.12); margin-bottom: 16px;
+  }
+  .timer-wrap { text-align: center; }
+  .mode-label {
+    display: inline-block; font-size: 0.85rem; font-weight: 700;
+    padding: 5px 16px; border-radius: 999px; margin-bottom: 14px;
+    background: #ffe9b8; color: #8a6d1a; letter-spacing: 1px;
+  }
+  .mode-label.break { background: #d9ecc6; color: #4a7a2a; }
+  .time-display {
+    font-size: 4.6rem; font-weight: 800; letter-spacing: 3px;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+    color: var(--ink); margin: 6px 0 4px;
+  }
+  .time-display.break { color: #4a7a2a; }
+  .progress-track {
+    height: 10px; border-radius: 999px; background: #f2e6c8;
+    overflow: hidden; margin: 14px auto 20px; max-width: 420px;
+  }
+  .progress-fill {
+    height: 100%; width: 0%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width 0.5s linear;
+  }
+  .progress-fill.break { background: linear-gradient(90deg, #9ec97a, #6a9e3f); }
+  .btn-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  button {
+    font-family: inherit; font-size: 1.05rem; font-weight: 700;
+    padding: 13px 34px; border: none; border-radius: 999px; cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.15s;
+  }
+  button:active { transform: scale(0.97); }
+  .btn-main {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff; box-shadow: 0 4px 14px rgba(232, 137, 12, 0.35);
+  }
+  .btn-main:hover { box-shadow: 0 6px 20px rgba(232, 137, 12, 0.45); }
+  .btn-sub { background: #f2e6c8; color: #8a6d1a; }
+  .btn-sub:hover { background: #ecdcb2; }
+  .tree-card { text-align: center; }
+  .tree-title { font-size: 0.95rem; font-weight: 700; color: #8a6d1a; margin-bottom: 6px; }
+  #treeCanvas { display: block; margin: 0 auto; image-rendering: pixelated; }
+  .tree-stage { font-size: 0.85rem; color: var(--dim); margin-top: 6px; }
+  .stats { display: flex; gap: 12px; }
+  .stat {
+    flex: 1; text-align: center; background: var(--card); border-radius: 16px;
+    padding: 16px 8px; box-shadow: 0 3px 16px rgba(180, 140, 40, 0.10);
+  }
+  .stat .num { font-size: 1.6rem; font-weight: 800; color: var(--accent2); }
+  .stat .lbl { font-size: 0.78rem; color: var(--dim); margin-top: 4px; }
+  .settings { font-size: 0.9rem; }
+  .settings summary { cursor: pointer; color: var(--dim); font-weight: 700; }
+  .settings-grid { display: flex; gap: 14px; margin-top: 12px; flex-wrap: wrap; }
+  .settings-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; color: #8a6d1a; }
+  .settings-grid input {
+    width: 90px; padding: 8px 10px; border: 2px solid #f2e6c8; border-radius: 10px;
+    font-family: inherit; font-size: 1rem; color: var(--ink); background: #fff;
+  }
+  footer { text-align: center; color: var(--dim); font-size: 0.8rem; margin: 10px 0 20px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🍊 みかんフォーカス</h1>
+    <div class="tagline">Mikan Focus — 集中するたび、みかんの木が育つ。</div>
+  </header>
+
+  <div class="card timer-wrap">
+    <div class="mode-label" id="modeLabel">🍊 集中タイム</div>
+    <div class="time-display" id="timeDisplay">25:00</div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="btn-row">
+      <button class="btn-main" id="startBtn">スタート</button>
+      <button class="btn-sub" id="resetBtn">リセット</button>
+    </div>
+  </div>
+
+  <div class="card tree-card">
+    <div class="tree-title">🌳 あなたのみかんの木</div>
+    <canvas id="treeCanvas" width="320" height="180"></canvas>
+    <div class="tree-stage" id="treeStage">まだ種をまいたばかり…</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="num" id="statToday">0</div><div class="lbl">今日のみかん</div></div>
+    <div class="stat"><div class="num" id="statTotal">0</div><div class="lbl">これまでのみかん</div></div>
+    <div class="stat"><div class="num" id="statMinutes">0</div><div class="lbl">集中した分（分）</div></div>
+  </div>
+
+  <div class="card settings">
+    <details>
+      <summary>⚙️ 設定（タイマーの長さ）</summary>
+      <div class="settings-grid">
+        <label>集中（分）<input type="number" id="workMin" min="1" max="120" value="25"></label>
+        <label>休憩（分）<input type="number" id="breakMin" min="1" max="60" value="5"></label>
+      </div>
+    </details>
+  </div>
+
+  <footer>みかんフォーカス — Embassy プロジェクト / データはブラウザに保存されます</footer>
+</div>
+
+<script>
+// ===== 状態 =====
+const state = {
+  mode: 'work',
+  running: false,
+  remain: 25 * 60,
+  workSec: 25 * 60,
+  breakSec: 5 * 60,
+  totalSec: 25 * 60,
+  timer: null,
+  lastTick: 0,
+};
+
+// ===== 保存データ =====
+const store = {
+  load() {
+    try { return JSON.parse(localStorage.getItem('mikan-focus') || '{}'); }
+    catch { return {}; }
+  },
+  save(data) {
+    try { localStorage.setItem('mikan-focus', JSON.stringify(data)); } catch {}
+  },
+};
+
+let data = Object.assign({ sessionsToday: 0, sessionsTotal: 0, minutesTotal: 0, lastDate: '', growth: 0 }, store.load());
+
+const today = new Date().toDateString();
+if (data.lastDate !== today) { data.sessionsToday = 0; data.lastDate = today; }
+
+// ===== タイマーUI =====
+const timeDisplay = document.getElementById('timeDisplay');
+const modeLabel = document.getElementById('modeLabel');
+const progressFill = document.getElementById('progressFill');
+const startBtn = document.getElementById('startBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function fmt(sec) {
+  const m = Math.floor(sec / 60).toString().padStart(2, '0');
+  const s = Math.floor(sec % 60).toString().padStart(2, '0');
+  return m + ':' + s;
+}
+
+function render() {
+  timeDisplay.textContent = fmt(state.remain);
+  timeDisplay.classList.toggle('break', state.mode === 'break');
+  modeLabel.classList.toggle('break', state.mode === 'break');
+  progressFill.classList.toggle('break', state.mode === 'break');
+  if (state.mode === 'work') {
+    modeLabel.textContent = state.running ? '🍊 集中タイム（がんばれ！）' : '🍊 集中タイム';
+  } else {
+    modeLabel.textContent = state.running ? '🍵 休憩タイム（ひとやすみ）' : '🍵 休憩タイム';
+  }
+  const done = state.totalSec - state.remain;
+  progressFill.style.width = Math.min(100, (done / state.totalSec) * 100) + '%';
+  startBtn.textContent = state.running ? '一時停止' : (state.remain === state.totalSec ? 'スタート' : 'つづける');
+  renderTree();
+  renderStats();
+}
+
+function renderStats() {
+  document.getElementById('statToday').textContent = data.sessionsToday;
+  document.getElementById('statTotal').textContent = data.sessionsTotal;
+  document.getElementById('statMinutes').textContent = data.minutesTotal;
+}
+
+// ===== サウンド（Web Audio） =====
+let audioCtx = null;
+function chime() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const notes = state.mode === 'work' ? [523.25, 659.25, 783.99] : [783.99, 659.25, 523.25];
+    notes.forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, audioCtx.currentTime + i * 0.18);
+      gain.gain.exponentialRampToValueAtTime(0.22, audioCtx.currentTime + i * 0.18 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + i * 0.18 + 0.9);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(audioCtx.currentTime + i * 0.18);
+      osc.stop(audioCtx.currentTime + i * 0.18 + 1.0);
+    });
+  } catch {}
+}
+
+// ===== タイマーロジック =====
+function tick() {
+  const now = Date.now();
+  const elapsed = Math.floor((now - state.lastTick) / 1000);
+  if (elapsed <= 0) return;
+  state.lastTick = now;
+  state.remain -= elapsed;
+  if (state.remain <= 0) {
+    state.remain = 0;
+    render();
+    complete();
+    return;
+  }
+  render();
+}
+
+function complete() {
+  stopTimer();
+  chime();
+  if (state.mode === 'work') {
+    data.sessionsToday += 1;
+    data.sessionsTotal += 1;
+    data.minutesTotal += Math.round(state.workSec / 60);
+    data.growth = Math.min(100, data.growth + 100 / 8);
+    store.save(data);
+    state.mode = 'break';
+    state.totalSec = state.breakSec;
+    state.remain = state.breakSec;
+    notify('🍊 みかんが実りました！', '休憩タイムです。');
+  } else {
+    state.mode = 'work';
+    state.totalSec = state.workSec;
+    state.remain = state.workSec;
+    notify('🍵 休憩おわり', '次の集中タイムへ！');
+  }
+  render();
+}
+
+function notify(title, body) {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body });
+  }
+}
+
+function startTimer() {
+  if (state.running) return;
+  state.running = true;
+  state.lastTick = Date.now();
+  state.timer = setInterval(tick, 250);
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+  render();
+}
+
+function stopTimer() {
+  state.running = false;
+  if (state.timer) { clearInterval(state.timer); state.timer = null; }
+}
+
+startBtn.addEventListener('click', () => {
+  if (state.running) { stopTimer(); render(); }
+  else startTimer();
+});
+
+resetBtn.addEventListener('click', () => {
+  stopTimer();
+  state.remain = state.totalSec;
+  render();
+});
+
+document.getElementById('workMin').addEventListener('change', (e) => {
+  state.workSec = Math.max(1, Math.min(120, parseInt(e.target.value) || 25)) * 60;
+  if (state.mode === 'work' && !state.running && state.remain === state.totalSec) {
+    state.totalSec = state.workSec;
+    state.remain = state.workSec;
+  }
+  render();
+});
+document.getElementById('breakMin').addEventListener('change', (e) => {
+  state.breakSec = Math.max(1, Math.min(60, parseInt(e.target.value) || 5)) * 60;
+  if (state.mode === 'break' && !state.running && state.remain === state.totalSec) {
+    state.totalSec = state.breakSec;
+    state.remain = state.breakSec;
+  }
+  render();
+});
+
+// ===== みかんの木（ピクセルアート風canvas描画） =====
+const treeCanvas = document.getElementById('treeCanvas');
+const tctx = treeCanvas.getContext('2d');
+const W = treeCanvas.width, H = treeCanvas.height;
+
+function treeStage() {
+  const g = data.growth;
+  if (g <= 0) return 0;
+  if (g < 25) return 1;
+  if (g < 50) return 2;
+  if (g < 75) return 3;
+  if (g < 100) return 4;
+  return 5;
+}
+
+function px(x, y, s, color) {
+  tctx.fillStyle = color;
+  tctx.fillRect(x * s, y * s, s, s);
+}
+
+function drawTree() {
+  tctx.clearRect(0, 0, W, H);
+  const stage = treeStage();
+  const S = 4;
+  const groundY = H - 24;
+  tctx.fillStyle = '#e8d9a8';
+  tctx.fillRect(0, groundY, W, 24);
+  tctx.fillStyle = '#d9c88a';
+  for (let x = 0; x < W; x += 8) tctx.fillRect(x, groundY + 4, 4, 2);
+
+  const cx = Math.floor(W / 2 / S);
+  const baseY = Math.floor((groundY - 6) / S);
+
+  if (stage === 0) {
+    px(cx - 1, baseY, S, '#8a5a2a');
+    px(cx, baseY, S, '#a06a34');
+    px(cx - 1, baseY + 1, S, '#6b4520');
+    px(cx, baseY + 1, S, '#8a5a2a');
+    return;
+  }
+
+  if (stage === 1) {
+    px(cx, baseY - 1, S, '#6a9e3f');
+    px(cx, baseY - 2, S, '#7ab84a');
+    px(cx - 1, baseY - 1, S, '#5a8e33');
+    px(cx, baseY, S, '#8a5a2a');
+    return;
+  }
+
+  const trunkH = stage === 2 ? 4 : 6;
+  for (let i = 0; i < trunkH; i++) {
+    px(cx - 1, baseY - i, S, '#8a5a2a');
+    px(cx, baseY - i, S, '#9a6a34');
+  }
+
+  if (stage === 2) {
+    const ty = baseY - trunkH;
+    const leaves = [[-2,-1],[0,-1],[2,-1],[-3,0],[-1,0],[1,0],[3,0],[-2,1],[0,1],[2,1]];
+    for (const [dx, dy] of leaves) {
+      const shade = ((dx + dy) % 2 === 0) ? '#6a9e3f' : '#7ab84a';
+      px(cx + dx, ty + dy, S, shade);
+    }
+    return;
+  }
+
+  const ty = baseY - trunkH;
+  const crown = [];
+  for (let dy = -3; dy <= 2; dy++) {
+    for (let dx = -4; dx <= 4; dx++) {
+      const d = Math.abs(dx) + Math.abs(dy) * 1.4;
+      if (d < 4.6) crown.push([dx, dy]);
+    }
+  }
+  for (const [dx, dy] of crown) {
+    const shade = ((dx * 3 + dy * 5) % 3 === 0) ? '#5a8e33' : (((dx + dy) % 2 === 0) ? '#6a9e3f' : '#7ab84a');
+    px(cx + dx, ty + dy, S, shade);
+  }
+
+  if (stage === 3) {
+    const flowers = [[-3,-1],[1,-2],[3,0],[-1,1],[0,-1]];
+    for (const [dx, dy] of flowers) {
+      px(cx + dx, ty + dy, S, '#fffbe8');
+      px(cx + dx, ty + dy - 1, S, '#fff4d0');
+    }
+  }
+
+  if (stage >= 4) {
+    const fruits = [[-3,0],[2,-1],[-1,1],[3,1],[0,-2],[-2,-2]];
+    const n = stage === 5 ? fruits.length : 3;
+    for (let i = 0; i < n; i++) {
+      const [dx, dy] = fruits[i];
+      px(cx + dx, ty + dy, S, '#f5a623');
+      px(cx + dx, ty + dy - 1, S, '#f7b93f');
+      px(cx + dx + 1, ty + dy, S, '#e8890c');
+    }
+  }
+}
+
+function updateStageLabel() {
+  const stage = treeStage();
+  const labels = [
+    'まだ種をまいたばかり…',
+    '🌱 芽が出ました！',
+    '🌿 若木が育っています',
+    '🌸 花が咲きました！',
+    '🍊 実がなりはじめました',
+    '🎉 みかんが鈴なりです！',
+  ];
+  document.getElementById('treeStage').textContent = labels[stage];
+}
+
+function renderTree() {
+  drawTree();
+  updateStageLabel();
+}
+
+state.workSec = 25 * 60;
+state.breakSec = 5 * 60;
+state.totalSec = state.workSec;
+state.remain = state.workSec;
+render();
+</script>
+</body>
+</html>
