@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#f5a623">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍊</text></svg>">
 <title>みかんフォーカス - Mikan Focus</title>
 <style>
@@ -28,16 +29,26 @@
   .timer-wrap { text-align: center; }
   .mode-label {
     display: inline-block; font-size: 0.85rem; font-weight: 700;
-    padding: 5px 16px; border-radius: 999px; margin-bottom: 14px;
+    padding: 5px 16px; border-radius: 999px; margin-bottom: 10px;
     background: #ffe9b8; color: #8a6d1a; letter-spacing: 1px;
   }
   .mode-label.break { background: #d9ecc6; color: #4a7a2a; }
+  .mode-label.long { background: #d6e4f0; color: #2a5a8a; }
+  .dots { display: flex; gap: 8px; justify-content: center; margin: 6px 0 12px; }
+  .dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #f2e6c8; border: 2px solid #e2d2a2;
+    transition: background 0.3s, border-color 0.3s, transform 0.3s;
+  }
+  .dot.filled { background: var(--accent); border-color: var(--accent2); transform: scale(1.15); }
+  .dot.long { background: #7aa8d0; border-color: #2a5a8a; }
   .time-display {
     font-size: 4.6rem; font-weight: 800; letter-spacing: 3px;
     font-variant-numeric: tabular-nums; line-height: 1.1;
     color: var(--ink); margin: 6px 0 4px;
   }
   .time-display.break { color: #4a7a2a; }
+  .time-display.long { color: #2a5a8a; }
   .progress-track {
     height: 10px; border-radius: 999px; background: #f2e6c8;
     overflow: hidden; margin: 14px auto 20px; max-width: 420px;
@@ -48,6 +59,7 @@
     transition: width 0.5s linear;
   }
   .progress-fill.break { background: linear-gradient(90deg, #9ec97a, #6a9e3f); }
+  .progress-fill.long { background: linear-gradient(90deg, #7aa8d0, #2a5a8a); }
   .btn-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   button {
     font-family: inherit; font-size: 1.05rem; font-weight: 700;
@@ -62,6 +74,7 @@
   .btn-main:hover { box-shadow: 0 6px 20px rgba(232, 137, 12, 0.45); }
   .btn-sub { background: #f2e6c8; color: #8a6d1a; }
   .btn-sub:hover { background: #ecdcb2; }
+  .hint { font-size: 0.75rem; color: var(--dim); margin-top: 14px; }
   .tree-card { text-align: center; }
   .tree-title { font-size: 0.95rem; font-weight: 700; color: #8a6d1a; margin-bottom: 6px; }
   #treeCanvas { display: block; margin: 0 auto; image-rendering: pixelated; }
@@ -81,6 +94,11 @@
     width: 90px; padding: 8px 10px; border: 2px solid #f2e6c8; border-radius: 10px;
     font-family: inherit; font-size: 1rem; color: var(--ink); background: #fff;
   }
+  .settings-toggles { display: flex; gap: 18px; margin-top: 16px; flex-wrap: wrap; }
+  .settings-toggles label {
+    display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #8a6d1a; cursor: pointer;
+  }
+  .settings-toggles input { width: 16px; height: 16px; accent-color: var(--accent2); cursor: pointer; }
   footer { text-align: center; color: var(--dim); font-size: 0.8rem; margin: 10px 0 20px; }
 </style>
 </head>
@@ -93,12 +111,15 @@
 
   <div class="card timer-wrap">
     <div class="mode-label" id="modeLabel">🍊 集中タイム</div>
+    <div class="dots" id="cycleDots" title="ロング休憩までのみかん"></div>
     <div class="time-display" id="timeDisplay">25:00</div>
     <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
     <div class="btn-row">
       <button class="btn-main" id="startBtn">スタート</button>
       <button class="btn-sub" id="resetBtn">リセット</button>
+      <button class="btn-sub" id="skipBtn">スキップ</button>
     </div>
+    <div class="hint">⌨️ スペース = 開始/一時停止　R = リセット　S = スキップ</div>
   </div>
 
   <div class="card tree-card">
@@ -115,52 +136,103 @@
 
   <div class="card settings">
     <details>
-      <summary>⚙️ 設定（タイマーの長さ）</summary>
+      <summary>⚙️ 設定</summary>
       <div class="settings-grid">
         <label>集中（分）<input type="number" id="workMin" min="1" max="120" value="25"></label>
         <label>休憩（分）<input type="number" id="breakMin" min="1" max="60" value="5"></label>
+        <label>ロング休憩（分）<input type="number" id="longBreakMin" min="1" max="90" value="15"></label>
+        <label>何回でロング休憩<input type="number" id="cyclesPerLong" min="2" max="8" value="4"></label>
+      </div>
+      <div class="settings-toggles">
+        <label><input type="checkbox" id="soundOn" checked> 通知音</label>
+        <label><input type="checkbox" id="notifyOn" checked> デスクトップ通知</label>
+        <label><input type="checkbox" id="autoStartNext"> 次のフェーズを自動開始</label>
       </div>
     </details>
   </div>
 
-  <footer>みかんフォーカス — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.1 — Embassy プロジェクト / データはブラウザに保存されます</footer>
 </div>
 
 <script>
-// ===== 状態 =====
+// ===== 保存データ (v2) =====
+const STORE_KEY = 'mikan-focus';
+const BASE_TITLE = 'みかんフォーカス - Mikan Focus';
+const DEFAULT_SETTINGS = {
+  workMin: 25, breakMin: 5, longBreakMin: 15, cyclesPerLong: 4,
+  soundOn: true, notifyOn: true, autoStartNext: false,
+};
+
+function dayKey(dt = new Date()) {
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function loadData() {
+  let raw = {};
+  try { raw = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch {}
+  const d = {
+    v: 2,
+    settings: Object.assign({}, DEFAULT_SETTINGS, raw.settings || {}),
+    stats: raw.stats || { sessionsTotal: 0, minutesTotal: 0, days: {} },
+    cycleCount: raw.cycleCount || 0,
+    growth: raw.growth || 0,
+    tasks: raw.tasks || [],
+    activeTaskId: raw.activeTaskId || null,
+  };
+  if (!raw.v) {
+    // v1 → v2 移行
+    if (raw.sessionsTotal) d.stats.sessionsTotal = raw.sessionsTotal;
+    if (raw.minutesTotal) d.stats.minutesTotal = raw.minutesTotal;
+    if (raw.growth) d.growth = raw.growth;
+    if (raw.lastDate === new Date().toDateString() && raw.sessionsToday) {
+      const key = dayKey();
+      d.stats.days[key] = d.stats.days[key] || { sessions: 0, minutes: 0 };
+      d.stats.days[key].sessions += raw.sessionsToday;
+    }
+  }
+  if (!d.stats.days) d.stats.days = {};
+  return d;
+}
+
+let data = loadData();
+function saveData() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch {}
+}
+
+// ===== タイマー状態 =====
 const state = {
-  mode: 'work',
+  mode: 'work',       // 'work' | 'break' | 'long'
   running: false,
-  remain: 25 * 60,
-  workSec: 25 * 60,
-  breakSec: 5 * 60,
-  totalSec: 25 * 60,
+  remain: 0,
+  totalSec: 0,
   timer: null,
   lastTick: 0,
 };
 
-// ===== 保存データ =====
-const store = {
-  load() {
-    try { return JSON.parse(localStorage.getItem('mikan-focus') || '{}'); }
-    catch { return {}; }
-  },
-  save(data) {
-    try { localStorage.setItem('mikan-focus', JSON.stringify(data)); } catch {}
-  },
-};
+function phaseSec(mode) {
+  const s = data.settings;
+  if (mode === 'work') return Math.max(1, s.workMin) * 60;
+  if (mode === 'long') return Math.max(1, s.longBreakMin) * 60;
+  return Math.max(1, s.breakMin) * 60;
+}
 
-let data = Object.assign({ sessionsToday: 0, sessionsTotal: 0, minutesTotal: 0, lastDate: '', growth: 0 }, store.load());
+function setMode(mode) {
+  state.mode = mode;
+  state.totalSec = phaseSec(mode);
+  state.remain = state.totalSec;
+}
 
-const today = new Date().toDateString();
-if (data.lastDate !== today) { data.sessionsToday = 0; data.lastDate = today; }
-
-// ===== タイマーUI =====
+// ===== UI参照 =====
 const timeDisplay = document.getElementById('timeDisplay');
 const modeLabel = document.getElementById('modeLabel');
 const progressFill = document.getElementById('progressFill');
 const startBtn = document.getElementById('startBtn');
 const resetBtn = document.getElementById('resetBtn');
+const skipBtn = document.getElementById('skipBtn');
+const cycleDots = document.getElementById('cycleDots');
 
 function fmt(sec) {
   const m = Math.floor(sec / 60).toString().padStart(2, '0');
@@ -171,29 +243,60 @@ function fmt(sec) {
 function render() {
   timeDisplay.textContent = fmt(state.remain);
   timeDisplay.classList.toggle('break', state.mode === 'break');
+  timeDisplay.classList.toggle('long', state.mode === 'long');
   modeLabel.classList.toggle('break', state.mode === 'break');
+  modeLabel.classList.toggle('long', state.mode === 'long');
   progressFill.classList.toggle('break', state.mode === 'break');
+  progressFill.classList.toggle('long', state.mode === 'long');
+
   if (state.mode === 'work') {
     modeLabel.textContent = state.running ? '🍊 集中タイム（がんばれ！）' : '🍊 集中タイム';
+  } else if (state.mode === 'long') {
+    modeLabel.textContent = state.running ? '🌙 ロング休憩（しっかり休もう）' : '🌙 ロング休憩';
   } else {
     modeLabel.textContent = state.running ? '🍵 休憩タイム（ひとやすみ）' : '🍵 休憩タイム';
   }
+
   const done = state.totalSec - state.remain;
   progressFill.style.width = Math.min(100, (done / state.totalSec) * 100) + '%';
   startBtn.textContent = state.running ? '一時停止' : (state.remain === state.totalSec ? 'スタート' : 'つづける');
+  renderDots();
   renderTree();
   renderStats();
+  updateTitle();
+}
+
+function renderDots() {
+  const total = Math.max(2, data.settings.cyclesPerLong);
+  const filled = state.mode === 'long' ? total : (data.cycleCount % total);
+  cycleDots.innerHTML = '';
+  for (let i = 0; i < total; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i < filled ? (state.mode === 'long' ? ' filled long' : ' filled') : '');
+    cycleDots.appendChild(d);
+  }
+}
+
+function updateTitle() {
+  if (state.running) {
+    const icon = state.mode === 'work' ? '🍊' : (state.mode === 'long' ? '🌙' : '🍵');
+    document.title = `${icon} ${fmt(state.remain)} | みかんフォーカス`;
+  } else {
+    document.title = BASE_TITLE;
+  }
 }
 
 function renderStats() {
-  document.getElementById('statToday').textContent = data.sessionsToday;
-  document.getElementById('statTotal').textContent = data.sessionsTotal;
-  document.getElementById('statMinutes').textContent = data.minutesTotal;
+  const today = data.stats.days[dayKey()] || { sessions: 0, minutes: 0 };
+  document.getElementById('statToday').textContent = today.sessions;
+  document.getElementById('statTotal').textContent = data.stats.sessionsTotal;
+  document.getElementById('statMinutes').textContent = data.stats.minutesTotal;
 }
 
 // ===== サウンド（Web Audio） =====
 let audioCtx = null;
 function chime() {
+  if (!data.settings.soundOn) return;
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const notes = state.mode === 'work' ? [523.25, 659.25, 783.99] : [783.99, 659.25, 523.25];
@@ -232,28 +335,37 @@ function complete() {
   stopTimer();
   chime();
   if (state.mode === 'work') {
-    data.sessionsToday += 1;
-    data.sessionsTotal += 1;
-    data.minutesTotal += Math.round(state.workSec / 60);
+    const mins = Math.round(state.totalSec / 60);
+    data.stats.sessionsTotal += 1;
+    data.stats.minutesTotal += mins;
+    const key = dayKey();
+    const day = data.stats.days[key] || (data.stats.days[key] = { sessions: 0, minutes: 0 });
+    day.sessions += 1;
+    day.minutes += mins;
     data.growth = Math.min(100, data.growth + 100 / 8);
-    store.save(data);
-    state.mode = 'break';
-    state.totalSec = state.breakSec;
-    state.remain = state.breakSec;
-    notify('🍊 みかんが実りました！', '休憩タイムです。');
+    data.cycleCount += 1;
+    // アクティブなタスクにみかんを加算
+    const task = data.tasks.find(t => t.id === data.activeTaskId);
+    if (task) task.pomos = (task.pomos || 0) + 1;
+    const isLong = data.cycleCount % Math.max(2, data.settings.cyclesPerLong) === 0;
+    setMode(isLong ? 'long' : 'break');
+    saveData();
+    notify('🍊 みかんが実りました！', isLong ? 'ロング休憩の時間です。' : '休憩タイムです。');
   } else {
-    state.mode = 'work';
-    state.totalSec = state.workSec;
-    state.remain = state.workSec;
+    setMode('work');
     notify('🍵 休憩おわり', '次の集中タイムへ！');
   }
   render();
+  if (data.settings.autoStartNext) {
+    setTimeout(() => { if (!state.running) startTimer(); }, 1200);
+  }
 }
 
 function notify(title, body) {
+  if (!data.settings.notifyOn) return;
   if (!('Notification' in window)) return;
   if (Notification.permission === 'granted') {
-    new Notification(title, { body });
+    try { new Notification(title, { body }); } catch {}
   }
 }
 
@@ -262,7 +374,7 @@ function startTimer() {
   state.running = true;
   state.lastTick = Date.now();
   state.timer = setInterval(tick, 250);
-  if ('Notification' in window && Notification.permission === 'default') {
+  if (data.settings.notifyOn && 'Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
   }
   render();
@@ -273,33 +385,73 @@ function stopTimer() {
   if (state.timer) { clearInterval(state.timer); state.timer = null; }
 }
 
-startBtn.addEventListener('click', () => {
+function toggleTimer() {
   if (state.running) { stopTimer(); render(); }
   else startTimer();
-});
+}
 
-resetBtn.addEventListener('click', () => {
+function resetTimer() {
   stopTimer();
   state.remain = state.totalSec;
   render();
+}
+
+function skipPhase() {
+  stopTimer();
+  // 作業をスキップしても「みかん」は実らない（正直設計）
+  if (state.mode === 'work') {
+    setMode('break');
+  } else {
+    setMode('work');
+  }
+  render();
+}
+
+startBtn.addEventListener('click', toggleTimer);
+resetBtn.addEventListener('click', resetTimer);
+skipBtn.addEventListener('click', skipPhase);
+
+// ===== キーボードショートカット =====
+document.addEventListener('keydown', (e) => {
+  if (e.target.closest('input, textarea, select')) return;
+  if (e.code === 'Space') { e.preventDefault(); toggleTimer(); }
+  else if (e.key === 'r' || e.key === 'R') { resetTimer(); }
+  else if (e.key === 's' || e.key === 'S') { skipPhase(); }
 });
 
-document.getElementById('workMin').addEventListener('change', (e) => {
-  state.workSec = Math.max(1, Math.min(120, parseInt(e.target.value) || 25)) * 60;
-  if (state.mode === 'work' && !state.running && state.remain === state.totalSec) {
-    state.totalSec = state.workSec;
-    state.remain = state.workSec;
-  }
-  render();
-});
-document.getElementById('breakMin').addEventListener('change', (e) => {
-  state.breakSec = Math.max(1, Math.min(60, parseInt(e.target.value) || 5)) * 60;
-  if (state.mode === 'break' && !state.running && state.remain === state.totalSec) {
-    state.totalSec = state.breakSec;
-    state.remain = state.breakSec;
-  }
-  render();
-});
+// ===== 設定 =====
+function bindNumberInput(id, key, min, max, fallback) {
+  const el = document.getElementById(id);
+  el.value = data.settings[key];
+  el.addEventListener('change', () => {
+    const v = Math.max(min, Math.min(max, parseInt(el.value) || fallback));
+    el.value = v;
+    data.settings[key] = v;
+    saveData();
+    // 実行中でなく、フェーズの先頭にいる場合は表示を更新
+    if (!state.running && state.remain === state.totalSec) {
+      state.totalSec = phaseSec(state.mode);
+      state.remain = state.totalSec;
+    }
+    render();
+  });
+}
+bindNumberInput('workMin', 'workMin', 1, 120, 25);
+bindNumberInput('breakMin', 'breakMin', 1, 60, 5);
+bindNumberInput('longBreakMin', 'longBreakMin', 1, 90, 15);
+bindNumberInput('cyclesPerLong', 'cyclesPerLong', 2, 8, 4);
+
+function bindToggle(id, key) {
+  const el = document.getElementById(id);
+  el.checked = !!data.settings[key];
+  el.addEventListener('change', () => {
+    data.settings[key] = el.checked;
+    saveData();
+  });
+}
+bindToggle('soundOn', 'soundOn');
+bindToggle('notifyOn', 'notifyOn');
+bindToggle('autoStartNext', 'autoStartNext');
 
 // ===== みかんの木（ピクセルアート風canvas描画） =====
 const treeCanvas = document.getElementById('treeCanvas');
@@ -417,10 +569,8 @@ function renderTree() {
   updateStageLabel();
 }
 
-state.workSec = 25 * 60;
-state.breakSec = 5 * 60;
-state.totalSec = state.workSec;
-state.remain = state.workSec;
+// ===== 初期化 =====
+setMode('work');
 render();
 </script>
 </body>
