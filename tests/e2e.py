@@ -6,12 +6,16 @@ Run:
 
 Covers: timer start/pause/tick, work-session completion (stats/growth/task pomo),
 task list CRUD + persistence, week chart pixels, export download, import restore,
-reload persistence, zero JS errors.
+reload persistence, zero JS errors. Plus PWA phase (HTTP-served): manifest,
+service worker registration, cache population, offline reload, install button.
 """
 import asyncio
+import functools
+import http.server
 import json
 import pathlib
 import tempfile
+import threading
 
 from playwright.async_api import async_playwright
 
@@ -152,6 +156,68 @@ async def main():
 
         results["js_errors"] = errors
         check("no JS errors", len(errors) == 0, "; ".join(errors[:3]))
+
+        # ===== PWA phase (HTTP-served) =====
+        handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(HERE))
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 3971), handler)
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+        try:
+            ctx2 = await browser.new_context()
+            page2 = await ctx2.new_page()
+            errors2 = []
+            page2.on("pageerror", lambda e: errors2.append(str(e)))
+            await page2.goto("http://127.0.0.1:3971/index.html")
+            await page2.wait_for_timeout(600)
+
+            # manifest tag + fetch
+            check("manifest link tag present", await page2.locator('link[rel="manifest"]').count() == 1)
+            man = await page2.evaluate(
+                "fetch('manifest.json').then(r => r.ok ? r.json() : null).catch(() => null)"
+            )
+            results["manifest_name"] = (man or {}).get("name", "")
+            check("manifest fetchable + named", bool(man and "みかん" in man.get("name", "")), str(man and man.get("name")))
+
+            # service worker registration (ready resolves => active)
+            sw_state = await page2.evaluate(
+                "navigator.serviceWorker.ready.then(r => r.active ? 'active' : 'inactive').catch(e => 'err:' + e)"
+            )
+            results["sw_state"] = sw_state
+            check("service worker active", sw_state == "active", str(sw_state))
+
+            # cache populated with app shell
+            cache_info = await page2.evaluate(
+                """async () => {
+                     const keys = await caches.keys();
+                     const c = await caches.open('mikan-focus-v1.3');
+                     const hit = await c.match('./index.html');
+                     return {keys, indexCached: !!hit};
+                   }"""
+            )
+            results["cache_keys"] = cache_info["keys"]
+            check("cache populated (index.html)", cache_info["indexCached"], str(cache_info))
+
+            # install button present but hidden (no beforeinstallprompt in headless)
+            check("install button hidden by default", await page2.locator("#installBtn").count() == 1
+                  and await page2.locator("#installBtn").is_hidden())
+
+            # offline reload served from SW cache
+            await ctx2.set_offline(True)
+            try:
+                await page2.reload(timeout=8000)
+                await page2.wait_for_timeout(500)
+                title_off = await page2.title()
+                time_off = await page2.text_content("#timeDisplay")
+                results["offline_title"] = title_off
+                check("offline reload works (SW cache)", "みかん" in title_off and time_off == "25:00",
+                      f"{title_off} / {time_off}")
+            except Exception as e:  # noqa: BLE001
+                check("offline reload works (SW cache)", False, str(e)[:120])
+            finally:
+                await ctx2.set_offline(False)
+            await ctx2.close()
+        finally:
+            httpd.shutdown()
 
         await browser.close()
 

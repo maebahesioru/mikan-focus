@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#f5a623">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍊</text></svg>">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="description" content="集中するたび、みかんの木が育つポモドーロタイマー。Pomodoro timer with a growing pixel-art mikan tree.">
+<meta name="mobile-web-app-capable" content="yes">
 <title>みかんフォーカス - Mikan Focus</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -22,6 +26,7 @@
   header { text-align: center; margin: 12px 0 18px; }
   h1 { font-size: 1.9rem; letter-spacing: 2px; }
   .tagline { color: var(--dim); font-size: 0.9rem; margin-top: 4px; }
+  .install-btn { margin-top: 12px; padding: 10px 20px; font-size: 0.9rem; }
   .card {
     background: var(--card); border-radius: 20px; padding: 26px 24px;
     box-shadow: 0 4px 24px rgba(180, 140, 40, 0.12); margin-bottom: 16px;
@@ -138,6 +143,7 @@
   <header>
     <h1>🍊 みかんフォーカス</h1>
     <div class="tagline">Mikan Focus — 集中するたび、みかんの木が育つ。</div>
+    <button class="btn-sub install-btn" id="installBtn" hidden>📲 アプリとしてインストール</button>
   </header>
 
   <div class="card timer-wrap">
@@ -204,7 +210,7 @@
     </details>
   </div>
 
-  <footer>みかんフォーカス v1.2 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.3 — Embassy プロジェクト / データはブラウザに保存されます</footer>
 </div>
 
 <script>
@@ -793,6 +799,31 @@ importFile.addEventListener('change', () => {
   };
   reader.readAsText(file);
 });
+
+// ===== PWA: インストール & Service Worker =====
+const installBtn = document.getElementById('installBtn');
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  installBtn.hidden = false;
+});
+installBtn.addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  try {
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') installBtn.hidden = true;
+  } catch {}
+  deferredPrompt = null;
+});
+window.addEventListener('appinstalled', () => { installBtn.hidden = true; deferredPrompt = null; });
+
+if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
 
 // ===== 初期化 =====
 setMode('work');
