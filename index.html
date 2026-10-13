@@ -99,6 +99,37 @@
     display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #8a6d1a; cursor: pointer;
   }
   .settings-toggles input { width: 16px; height: 16px; accent-color: var(--accent2); cursor: pointer; }
+  /* タスクリスト */
+  .task-card .task-title { font-size: 0.95rem; font-weight: 700; color: #8a6d1a; margin-bottom: 10px; }
+  .task-add { display: flex; gap: 8px; margin-bottom: 12px; }
+  .task-add input[type=text] {
+    flex: 1; min-width: 0; padding: 10px 12px; border: 2px solid #f2e6c8; border-radius: 12px;
+    font-family: inherit; font-size: 0.95rem; color: var(--ink); background: #fff;
+  }
+  .task-add button { padding: 10px 18px; font-size: 0.95rem; }
+  .task-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .task-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    background: #fff; border: 2px solid #f2e6c8; border-radius: 12px; cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .task-item:hover { border-color: #ecd9a8; }
+  .task-item.active { border-color: var(--accent); background: #fff7e0; }
+  .task-item .t-name { flex: 1; min-width: 0; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-item .t-pomos { font-size: 0.8rem; color: var(--accent2); font-weight: 700; white-space: nowrap; }
+  .task-item .t-del {
+    border: none; background: none; cursor: pointer; font-size: 0.9rem; color: var(--dim);
+    padding: 4px 6px; border-radius: 8px; line-height: 1;
+  }
+  .task-item .t-del:hover { background: #fbe9e9; color: #c0392b; }
+  .task-empty { font-size: 0.82rem; color: var(--dim); text-align: center; padding: 4px 0; }
+  .active-task-line { font-size: 0.85rem; color: var(--accent2); font-weight: 700; margin-top: 8px; min-height: 1.2em; }
+  /* 週間チャート */
+  .week-card { text-align: center; }
+  .week-card canvas { image-rendering: pixelated; max-width: 100%; }
+  .week-caption { font-size: 0.8rem; color: var(--dim); margin-top: 6px; }
+  .settings-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .settings-actions button { padding: 9px 16px; font-size: 0.85rem; }
   footer { text-align: center; color: var(--dim); font-size: 0.8rem; margin: 10px 0 20px; }
 </style>
 </head>
@@ -110,9 +141,9 @@
   </header>
 
   <div class="card timer-wrap">
-    <div class="mode-label" id="modeLabel">🍊 集中タイム</div>
+    <div class="mode-label" id="modeLabel" aria-live="polite">🍊 集中タイム</div>
     <div class="dots" id="cycleDots" title="ロング休憩までのみかん"></div>
-    <div class="time-display" id="timeDisplay">25:00</div>
+    <div class="time-display" id="timeDisplay" role="timer" aria-label="残り時間">25:00</div>
     <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
     <div class="btn-row">
       <button class="btn-main" id="startBtn">スタート</button>
@@ -120,18 +151,35 @@
       <button class="btn-sub" id="skipBtn">スキップ</button>
     </div>
     <div class="hint">⌨️ スペース = 開始/一時停止　R = リセット　S = スキップ</div>
+    <div class="active-task-line" id="activeTaskLine"></div>
+  </div>
+
+  <div class="card task-card">
+    <div class="task-title">📋 やることリスト（集中のみかんはタスクに貯まる）</div>
+    <div class="task-add">
+      <input type="text" id="taskInput" placeholder="タスク名を入力…" maxlength="60">
+      <button class="btn-sub" id="taskAddBtn">追加</button>
+    </div>
+    <ul class="task-list" id="taskList"></ul>
+    <div class="task-empty" id="taskEmpty">タスクを追加して、集中タイムでみかんを集めよう🍊</div>
   </div>
 
   <div class="card tree-card">
     <div class="tree-title">🌳 あなたのみかんの木</div>
     <canvas id="treeCanvas" width="320" height="180"></canvas>
-    <div class="tree-stage" id="treeStage">まだ種をまいたばかり…</div>
+    <div class="tree-stage" id="treeStage" aria-live="polite">まだ種をまいたばかり…</div>
   </div>
 
   <div class="stats">
     <div class="stat"><div class="num" id="statToday">0</div><div class="lbl">今日のみかん</div></div>
     <div class="stat"><div class="num" id="statTotal">0</div><div class="lbl">これまでのみかん</div></div>
     <div class="stat"><div class="num" id="statMinutes">0</div><div class="lbl">集中した分（分）</div></div>
+  </div>
+
+  <div class="card week-card">
+    <div class="tree-title">📊 この1週間の集中（分）</div>
+    <canvas id="weekCanvas" width="440" height="120" role="img" aria-label="過去7日間の集中時間チャート"></canvas>
+    <div class="week-caption" id="weekCaption"></div>
   </div>
 
   <div class="card settings">
@@ -148,10 +196,15 @@
         <label><input type="checkbox" id="notifyOn" checked> デスクトップ通知</label>
         <label><input type="checkbox" id="autoStartNext"> 次のフェーズを自動開始</label>
       </div>
+      <div class="settings-actions">
+        <button class="btn-sub" id="exportBtn">💾 データを書き出す</button>
+        <button class="btn-sub" id="importBtn">📥 データを読み込む</button>
+        <input type="file" id="importFile" accept=".json,application/json" hidden>
+      </div>
     </details>
   </div>
 
-  <footer>みかんフォーカス v1.1 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.2 — Embassy プロジェクト / データはブラウザに保存されます</footer>
 </div>
 
 <script>
@@ -350,6 +403,8 @@ function complete() {
     const isLong = data.cycleCount % Math.max(2, data.settings.cyclesPerLong) === 0;
     setMode(isLong ? 'long' : 'break');
     saveData();
+    renderTasks();
+    drawWeek();
     notify('🍊 みかんが実りました！', isLong ? 'ロング休憩の時間です。' : '休憩タイムです。');
   } else {
     setMode('work');
@@ -569,9 +624,181 @@ function renderTree() {
   updateStageLabel();
 }
 
+// ===== タスクリスト =====
+const taskListEl = document.getElementById('taskList');
+const taskInput = document.getElementById('taskInput');
+const taskEmptyEl = document.getElementById('taskEmpty');
+const activeTaskLine = document.getElementById('activeTaskLine');
+
+function activeTask() {
+  return data.tasks.find(t => t.id === data.activeTaskId) || null;
+}
+
+function renderTasks() {
+  taskListEl.innerHTML = '';
+  taskEmptyEl.style.display = data.tasks.length ? 'none' : '';
+  for (const task of data.tasks) {
+    const li = document.createElement('li');
+    li.className = 'task-item' + (task.id === data.activeTaskId ? ' active' : '');
+    const name = document.createElement('span');
+    name.className = 't-name';
+    name.textContent = (task.id === data.activeTaskId ? '🍊 ' : '') + task.name;
+    const pomos = document.createElement('span');
+    pomos.className = 't-pomos';
+    pomos.textContent = '🍊×' + (task.pomos || 0);
+    const del = document.createElement('button');
+    del.className = 't-del';
+    del.type = 'button';
+    del.textContent = '✕';
+    del.title = 'このタスクを削除';
+    del.addEventListener('click', (e) => { e.stopPropagation(); deleteTask(task.id); });
+    li.append(name, pomos, del);
+    li.addEventListener('click', () => selectTask(task.id));
+    taskListEl.appendChild(li);
+  }
+  const t = activeTask();
+  activeTaskLine.textContent = t ? `いまのタスク: ${t.name}（🍊×${t.pomos || 0}）` : '';
+}
+
+function addTask() {
+  const name = taskInput.value.trim();
+  if (!name) return;
+  data.tasks.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name, pomos: 0, created: Date.now(),
+  });
+  if (!data.activeTaskId) data.activeTaskId = data.tasks[data.tasks.length - 1].id;
+  taskInput.value = '';
+  saveData();
+  renderTasks();
+}
+
+function selectTask(id) {
+  data.activeTaskId = data.activeTaskId === id ? null : id;
+  saveData();
+  renderTasks();
+}
+
+function deleteTask(id) {
+  data.tasks = data.tasks.filter(t => t.id !== id);
+  if (data.activeTaskId === id) data.activeTaskId = null;
+  saveData();
+  renderTasks();
+}
+
+document.getElementById('taskAddBtn').addEventListener('click', addTask);
+taskInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); addTask(); }
+});
+
+// ===== 週間チャート =====
+const weekCanvas = document.getElementById('weekCanvas');
+const wctx = weekCanvas.getContext('2d');
+
+function last7Days() {
+  const out = [];
+  for (let i = 6; i >= 0; i--) {
+    const dt = new Date();
+    dt.setDate(dt.getDate() - i);
+    const day = data.stats.days[dayKey(dt)] || { sessions: 0, minutes: 0 };
+    out.push({ label: `${dt.getMonth() + 1}/${dt.getDate()}`, sessions: day.sessions, minutes: day.minutes, isToday: i === 0 });
+  }
+  return out;
+}
+
+function drawWeek() {
+  const days = last7Days();
+  const CW = weekCanvas.width, CH = weekCanvas.height;
+  wctx.clearRect(0, 0, CW, CH);
+  const max = Math.max(30, ...days.map(d => d.minutes));
+  const barW = 36, gap = (CW - barW * 7) / 8;
+  const baseY = CH - 26;
+  wctx.font = '12px sans-serif';
+  wctx.textAlign = 'center';
+  days.forEach((d, i) => {
+    const h = Math.max(Math.round((d.minutes / max) * (baseY - 20)), 3);
+    const x = Math.round(gap + i * (barW + gap));
+    wctx.fillStyle = d.minutes > 0 ? '#f5a623' : '#f2e6c8';
+    wctx.fillRect(x, baseY - h, barW, h);
+    if (d.minutes > 0) {
+      wctx.fillStyle = '#e8890c';
+      wctx.fillRect(x, baseY - h, 5, h);
+      wctx.fillStyle = '#8a6d1a';
+      wctx.fillText(String(d.minutes), x + barW / 2, baseY - h - 6);
+    }
+    wctx.fillStyle = d.isToday ? '#e8890c' : '#b8a86a';
+    wctx.fillText(d.label, x + barW / 2, CH - 8);
+  });
+  wctx.fillStyle = '#e2d2a2';
+  wctx.fillRect(0, baseY, CW, 2);
+  const totalMin = days.reduce((a, d) => a + d.minutes, 0);
+  const totalSes = days.reduce((a, d) => a + d.sessions, 0);
+  document.getElementById('weekCaption').textContent = `7日間の合計: ${totalMin}分 / みかん${totalSes}個`;
+}
+
+// ===== エクスポート / インポート =====
+function syncSettingsUI() {
+  for (const id of ['workMin', 'breakMin', 'longBreakMin', 'cyclesPerLong']) {
+    document.getElementById(id).value = data.settings[id];
+  }
+  document.getElementById('soundOn').checked = !!data.settings.soundOn;
+  document.getElementById('notifyOn').checked = !!data.settings.notifyOn;
+  document.getElementById('autoStartNext').checked = !!data.settings.autoStartNext;
+}
+
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `mikan-focus-backup-${dayKey()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+const importFile = document.getElementById('importFile');
+document.getElementById('importBtn').addEventListener('click', () => importFile.click());
+importFile.addEventListener('change', () => {
+  const file = importFile.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const imported = JSON.parse(reader.result);
+      if (!imported || typeof imported !== 'object' || !imported.stats || typeof imported.stats !== 'object') {
+        throw new Error('invalid backup');
+      }
+      data = {
+        v: 2,
+        settings: Object.assign({}, DEFAULT_SETTINGS, imported.settings || {}),
+        stats: Object.assign({ sessionsTotal: 0, minutesTotal: 0, days: {} }, imported.stats),
+        cycleCount: imported.cycleCount || 0,
+        growth: imported.growth || 0,
+        tasks: Array.isArray(imported.tasks) ? imported.tasks : [],
+        activeTaskId: imported.activeTaskId || null,
+      };
+      saveData();
+      stopTimer();
+      setMode('work');
+      syncSettingsUI();
+      render();
+      renderTasks();
+      drawWeek();
+      notify('📥 データを読み込みました', 'バックアップから復元しました。');
+    } catch {
+      alert('読み込めないファイルです。エクスポートしたJSONを選んでください。');
+    }
+    importFile.value = '';
+  };
+  reader.readAsText(file);
+});
+
 // ===== 初期化 =====
 setMode('work');
 render();
+renderTasks();
+drawWeek();
 </script>
 </body>
 </html>
