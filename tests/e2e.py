@@ -6,8 +6,10 @@ Run:
 
 Covers: timer start/pause/tick, work-session completion (stats/growth/task pomo),
 task list CRUD + persistence, week chart pixels, export download, import restore,
-reload persistence, zero JS errors. Plus PWA phase (HTTP-served): manifest,
-service worker registration, cache population, offline reload, install button.
+reload persistence, zero JS errors, achievement badges (v1.10: grid, unlock on
+session / goal / memo, toasts, persistence, import recompute). Plus PWA phase
+(HTTP-served): manifest, service worker registration, cache population, offline
+reload, install button.
 """
 import asyncio
 import functools
@@ -51,6 +53,16 @@ async def main():
         results["time0"] = await page.text_content("#timeDisplay")
         check("initial 25:00", results["time0"] == "25:00", results["time0"])
         check("task list initially empty", await page.locator(".task-item").count() == 0)
+
+        # 1b. v1.10: achievement badges — grid renders, none unlocked yet
+        results["badge_items"] = await page.locator(".badge-item").count()
+        check("badge grid has 14 badges", results["badge_items"] == 14, str(results["badge_items"]))
+        results["badge_unlocked0"] = await page.locator(".badge-item.unlocked").count()
+        check("no badges unlocked initially", results["badge_unlocked0"] == 0, str(results["badge_unlocked0"]))
+        results["badge_count_text"] = await page.text_content("#badgeCount")
+        check("badge counter starts 0/14", results["badge_count_text"] == "たっせい 0/14", results["badge_count_text"])
+        results["badge_locked_progress"] = await page.locator(".badge-item").nth(1).text_content()
+        check("locked badge shows progress 0/10", "0/10" in results["badge_locked_progress"], results["badge_locked_progress"])
 
         # 2. add tasks
         await page.fill("#taskInput", "テストタスクA")
@@ -111,6 +123,14 @@ async def main():
         results["tree_stage"] = await page.text_content("#treeStage")
         check("tree grew (sprout)", "芽" in results["tree_stage"], results["tree_stage"])
 
+        # 5c. v1.10: first badge unlocked + toast shown
+        results["badges_after_first"] = await page.evaluate("data.badges.join(',')")
+        check("first badge unlocked", "first" in results["badges_after_first"], results["badges_after_first"])
+        results["badge_toast"] = await page.locator(".badge-toast").count()
+        check("unlock toast shown", results["badge_toast"] >= 1, str(results["badge_toast"]))
+        results["badge_unlocked1"] = await page.locator(".badge-item.unlocked").count()
+        check("1 badge unlocked in grid", results["badge_unlocked1"] == 1, str(results["badge_unlocked1"]))
+
         # 5b. v1.4: session history log + daily goal counter
         results["log_count"] = await page.locator(".log-item").count()
         check("history log shows 1 entry", results["log_count"] == 1, str(results["log_count"]))
@@ -159,6 +179,13 @@ async def main():
         results["log_count4"] = await page.locator(".log-item").count()
         check("history has 4 entries", results["log_count4"] == 4, str(results["log_count4"]))
 
+        # 6b-2. v1.10: badges unlocked by the goal loop (goal + bloom at growth 50)
+        results["badges_after_goal"] = await page.evaluate("data.badges.join(',')")
+        check("goal badge unlocked", "goal" in results["badges_after_goal"], results["badges_after_goal"])
+        check("bloom badge unlocked (growth 50)", "bloom" in results["badges_after_goal"], results["badges_after_goal"])
+        results["badge_unlocked_goal"] = await page.locator(".badge-item.unlocked").count()
+        check("3 badges unlocked after goal", results["badge_unlocked_goal"] == 3, str(results["badge_unlocked_goal"]))
+
         # 6c. v1.6: focus heatmap (15-week calendar)
         hpx = await page.evaluate(
             """() => { const c=document.getElementById('heatCanvas');
@@ -200,7 +227,7 @@ async def main():
         await page.wait_for_timeout(250)
         check("zen toggles on via button", await page.evaluate("document.body.classList.contains('zen')"))
         hidden = await page.evaluate(
-            """() => ['.task-card', '.stats', '.goal-card', '.log-card', '.settings']
+            """() => ['.task-card', '.stats', '.goal-card', '.badge-card', '.log-card', '.settings']
                  .map(s => { const el = document.querySelector(s);
                              return s + '=' + (el ? getComputedStyle(el).display === 'none' : 'missing'); })
                  .join(',')"""
@@ -265,6 +292,11 @@ async def main():
         await page.wait_for_timeout(250)
         results["note_saved"] = await page.evaluate("data.history[0].note")
         check("note saved to history[0]", results["note_saved"] == "E2Eテストのメモ", str(results["note_saved"]))
+        # v1.10: saving a memo unlocks the note badge (+ toast)
+        results["badge_note"] = await page.evaluate("data.badges.includes('note')")
+        check("note badge unlocked after memo", results["badge_note"] is True)
+        results["badge_toast_note"] = await page.locator(".badge-toast").count()
+        check("toast shown for note badge", results["badge_toast_note"] >= 1, str(results["badge_toast_note"]))
         results["note_text"] = await page.locator(".log-note").first.text_content()
         check("note rendered with 📝", "📝 E2Eテストのメモ" in (results["note_text"] or ""), str(results["note_text"]))
         await page.locator(".log-note").first.click()
@@ -291,6 +323,11 @@ async def main():
         check("note persisted after reload", results["note_reload"] == "E2Eテストのメモ", str(results["note_reload"]))
         results["note_render_reload"] = await page.locator(".log-note").count()
         check("note rendered after reload", results["note_render_reload"] >= 1, str(results["note_render_reload"]))
+        # v1.10: badges persisted across reload
+        results["badges_reload"] = await page.evaluate("data.badges.length")
+        check("badges persisted after reload (4)", results["badges_reload"] == 4, str(results["badges_reload"]))
+        results["badge_count_reload"] = await page.text_content("#badgeCount")
+        check("badge counter persisted 4/14", results["badge_count_reload"] == "たっせい 4/14", results["badge_count_reload"])
 
         # 8. export download (settings <details> must be open first)
         await page.evaluate("document.querySelector('.settings details').open = true")
@@ -341,6 +378,11 @@ async def main():
         check("log empty after v2 import (no history)", results["log_empty_after_import"] is True)
         results["goal_count_import"] = await page.text_content("#goalCount")
         check("goal counter from imported day 3/4", results["goal_count_import"] == "3/4", results["goal_count_import"])
+        # v1.10: import recomputes badges from imported stats (quietly, no toasts)
+        results["badges_import"] = await page.evaluate("data.badges.slice().sort().join(',')")
+        check("import recomputed badges (first,s10)", results["badges_import"] == "first,s10", results["badges_import"])
+        results["badge_count_import"] = await page.text_content("#badgeCount")
+        check("import badge counter 2/14", results["badge_count_import"] == "たっせい 2/14", results["badge_count_import"])
 
         # 10. reset button
         await page.click("#resetBtn")

@@ -140,7 +140,7 @@
   .week-card canvas { image-rendering: pixelated; max-width: 100%; }
   /* 集中モード（Zen）: タイマーと木だけ残す */
   body.zen .task-card, body.zen .stats, body.zen .goal-card,
-  body.zen .week-card, body.zen .log-card, body.zen .settings,
+  body.zen .badge-card, body.zen .week-card, body.zen .log-card, body.zen .settings,
   body.zen footer { display: none; }
   body.zen .hint { display: none; }
   body.zen .app { max-width: 430px; }
@@ -204,6 +204,30 @@
   .preset-row .preset-label { font-size: 0.78rem; color: #8a6d1a; }
   .preset-btn { font-size: 0.78rem; padding: 5px 12px; }
   .preset-btn[aria-pressed="true"] { outline: 2px solid var(--accent2); font-weight: 800; }
+  /* 実績バッジ (v1.10) */
+  .badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px; margin-top: 4px; }
+  .badge-item {
+    text-align: center; padding: 10px 6px 8px; background: #fff;
+    border: 2px solid #f2e6c8; border-radius: 14px; transition: transform 0.15s, border-color 0.15s;
+  }
+  .badge-item .b-ico { font-size: 1.5rem; display: block; line-height: 1.2; filter: grayscale(1) opacity(0.32); }
+  .badge-item .b-name { font-size: 0.72rem; font-weight: 700; color: #8a6d1a; margin-top: 4px; display: block; }
+  .badge-item .b-cond { font-size: 0.66rem; color: var(--dim); margin-top: 2px; display: block; font-variant-numeric: tabular-nums; }
+  .badge-item.unlocked { border-color: var(--accent); background: #fff7e0; }
+  .badge-item.unlocked .b-ico { filter: none; }
+  .badge-item.unlocked .b-name { color: var(--accent2); }
+  .badge-item.unlocked .b-cond { color: #4a7a2a; }
+  .badge-count { font-size: 0.8rem; color: var(--dim); margin-top: 10px; text-align: center; }
+  #badgeToastWrap {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    display: flex; flex-direction: column; gap: 8px; z-index: 120; pointer-events: none;
+  }
+  .badge-toast {
+    background: #4a3800; color: #fff8e7; font-size: 0.85rem; font-weight: 700;
+    padding: 10px 18px; border-radius: 999px; white-space: nowrap;
+    box-shadow: 0 6px 20px rgba(74, 56, 0, 0.3); animation: toastIn 0.35s ease;
+  }
+  @keyframes toastIn { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
   /* 紙吹雪 */
   #confettiCanvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99; }
   footer { text-align: center; color: var(--dim); font-size: 0.8rem; margin: 10px 0 20px; }
@@ -265,6 +289,12 @@
       <span class="goal-streak" id="goalStreak"></span>
       <span class="goal-banner" id="goalBanner">🎉 今日の目標を達成しました！</span>
     </div>
+  </div>
+
+  <div class="card badge-card">
+    <div class="tree-title">🏅 実績バッジ（あつめてみよう）</div>
+    <div class="badge-grid" id="badgeGrid" role="list" aria-label="実績バッジ一覧"></div>
+    <div class="badge-count" id="badgeCount" aria-live="polite"></div>
   </div>
 
   <div class="card week-card">
@@ -331,8 +361,9 @@
     </details>
   </div>
 
-  <footer>みかんフォーカス v1.9 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.10 — Embassy プロジェクト / データはブラウザに保存されます</footer>
 </div>
+<div id="badgeToastWrap" aria-live="polite"></div>
 <canvas id="confettiCanvas" aria-hidden="true"></canvas>
 
 <script>
@@ -367,6 +398,7 @@ function loadData() {
     history: Array.isArray(raw.history) ? raw.history : [],
     goalCelebrated: raw.goalCelebrated || '',
     treeCelebrated: !!raw.treeCelebrated,
+    badges: Array.isArray(raw.badges) ? raw.badges.filter(x => typeof x === 'string') : [],
   };
   if (!raw.v) {
     // v1 → v2/v3 移行
@@ -506,6 +538,109 @@ function renderGoal() {
   const streak = computeStreak();
   document.getElementById('goalStreak').textContent = streak > 1 ? `🔥 ${streak}日連続で集中中！` : (streak === 1 ? '🔥 今日も集中できた！' : '');
   document.getElementById('goalBanner').classList.toggle('show', done && data.goalCelebrated === dayKey());
+}
+
+// ===== 実績バッジ (v1.10) =====
+// 条件は stats / history から毎回導出（保存するのは「かいほう済みid」だけ）
+const BADGES = [
+  { id: 'first',   ico: '🍊',   name: 'はじめてのみかん', cond: '集中1回',        test: s => s.sessions >= 1,   prog: s => `${Math.min(s.sessions, 1)}/1` },
+  { id: 's10',     ico: '🍊🍊', name: 'みかん10こ',       cond: '集中10回',       test: s => s.sessions >= 10,  prog: s => `${Math.min(s.sessions, 10)}/10` },
+  { id: 's50',     ico: '🌳',   name: 'みかん50こ',       cond: '集中50回',       test: s => s.sessions >= 50,  prog: s => `${Math.min(s.sessions, 50)}/50` },
+  { id: 's100',    ico: '🏆',   name: 'みかん100こ',      cond: '集中100回',      test: s => s.sessions >= 100, prog: s => `${Math.min(s.sessions, 100)}/100` },
+  { id: 'min500',  ico: '⏱️',   name: '500分クラブ',      cond: '合計500分',      test: s => s.minutes >= 500,  prog: s => `${Math.min(s.minutes, 500)}/500` },
+  { id: 'min1000', ico: '⏳',   name: '1000分クラブ',     cond: '合計1000分',     test: s => s.minutes >= 1000, prog: s => `${Math.min(s.minutes, 1000)}/1000` },
+  { id: 'streak3', ico: '🔥',   name: '3日れんぞく',      cond: '3日連続で集中',  test: s => s.bestStreak >= 3, prog: s => `${Math.min(s.bestStreak, 3)}/3` },
+  { id: 'streak7', ico: '🌟',   name: '7日れんぞく',      cond: '7日連続で集中',  test: s => s.bestStreak >= 7, prog: s => `${Math.min(s.bestStreak, 7)}/7` },
+  { id: 'bloom',   ico: '🌸',   name: 'はながさいた',     cond: '木の成長50%',    test: s => s.growth >= 50,    prog: s => `${Math.min(Math.round(s.growth), 50)}/50` },
+  { id: 'full',    ico: '🍊🌳', name: 'みのり',           cond: '木が満開',       test: s => s.growth >= 100,   prog: s => `${Math.min(Math.round(s.growth), 100)}/100` },
+  { id: 'goal',    ico: '🎯',   name: '目標たっせい',     cond: '1日の目標達成',  test: s => s.goalDone,        prog: s => s.goalDone ? '1/1' : '0/1' },
+  { id: 'note',    ico: '📝',   name: 'きろくする人',     cond: 'メモを1件',      test: s => s.hasNote,         prog: s => s.hasNote ? '1/1' : '0/1' },
+  { id: 'night',   ico: '🌙',   name: 'よるの集中',       cond: '深夜0-4時に集中', test: s => s.night,          prog: s => s.night ? '1/1' : '0/1' },
+  { id: 'morning', ico: '🐦',   name: 'あさの集中',       cond: '朝5-8時に集中',  test: s => s.morning,         prog: s => s.morning ? '1/1' : '0/1' },
+];
+
+// これまでの最長れんぞく日数（daysマップから毎回計算）
+function bestStreak() {
+  const keys = Object.keys(data.stats.days)
+    .filter(k => (data.stats.days[k] || {}).sessions > 0).sort();
+  let best = 0, run = 0, prev = null;
+  for (const k of keys) {
+    if (prev) {
+      const diff = Math.round((new Date(k + 'T00:00:00') - new Date(prev + 'T00:00:00')) / 86400000);
+      run = diff === 1 ? run + 1 : 1;
+    } else {
+      run = 1;
+    }
+    best = Math.max(best, run);
+    prev = k;
+  }
+  return best;
+}
+
+function badgeStats() {
+  const goal = Math.max(1, data.settings.dailyGoal);
+  const days = Object.values(data.stats.days || {});
+  let night = false, morning = false;
+  for (const h of data.history || []) {
+    const hr = new Date(h.t).getHours();
+    if (hr < 4) night = true;
+    if (hr >= 5 && hr < 8) morning = true;
+  }
+  return {
+    sessions: data.stats.sessionsTotal,
+    minutes: data.stats.minutesTotal,
+    growth: data.growth,
+    bestStreak: bestStreak(),
+    goalDone: days.some(d => (d.sessions || 0) >= goal),
+    hasNote: (data.history || []).some(h => h.note),
+    night, morning,
+  };
+}
+
+function badgeToast(b) {
+  const wrap = document.getElementById('badgeToastWrap');
+  if (!wrap) return;
+  const el = document.createElement('div');
+  el.className = 'badge-toast';
+  el.textContent = `🏅 実績かいほう: ${b.name}`;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function checkBadges(quiet = false) {
+  const s = badgeStats();
+  let changed = false;
+  for (const b of BADGES) {
+    if (!data.badges.includes(b.id) && b.test(s)) {
+      data.badges.push(b.id);
+      changed = true;
+      if (!quiet) badgeToast(b);
+    }
+  }
+  if (changed) saveData();
+  renderBadges();
+  return changed;
+}
+
+function renderBadges() {
+  const grid = document.getElementById('badgeGrid');
+  if (!grid) return;
+  const s = badgeStats();
+  grid.innerHTML = '';
+  for (const b of BADGES) {
+    const unlocked = data.badges.includes(b.id);
+    const el = document.createElement('div');
+    el.className = 'badge-item' + (unlocked ? ' unlocked' : '');
+    el.setAttribute('role', 'listitem');
+    el.title = unlocked ? `✅ ${b.name}（かいほう済み）` : `🔒 ${b.name} — ${b.cond}（${b.prog(s)}）`;
+    const ico = document.createElement('span'); ico.className = 'b-ico'; ico.textContent = b.ico;
+    const nm = document.createElement('span'); nm.className = 'b-name'; nm.textContent = b.name;
+    const cd = document.createElement('span'); cd.className = 'b-cond'; cd.textContent = unlocked ? '✅' : b.prog(s);
+    el.append(ico, nm, cd);
+    grid.appendChild(el);
+  }
+  const count = document.getElementById('badgeCount');
+  if (count) count.textContent = `たっせい ${data.badges.length}/${BADGES.length}`;
 }
 
 // ===== サウンド（Web Audio） =====
@@ -715,6 +850,7 @@ function complete() {
     const isLong = data.cycleCount % Math.max(2, data.settings.cyclesPerLong) === 0;
     setMode(isLong ? 'long' : 'break');
     saveData();
+    checkBadges();
     renderTasks();
     editingNote = null;
     renderLog();
@@ -1271,6 +1407,7 @@ function renderLog() {
         const v = inp.value.trim().slice(0, 120);
         if (v) h.note = v; else delete h.note;
         saveData();
+        checkBadges();
         editingNote = null;
         renderLog();
       };
@@ -1357,12 +1494,14 @@ importFile.addEventListener('change', () => {
         history: Array.isArray(imported.history) ? imported.history : [],
         goalCelebrated: imported.goalCelebrated || '',
         treeCelebrated: !!imported.treeCelebrated,
+        badges: Array.isArray(imported.badges) ? imported.badges.filter(x => typeof x === 'string') : [],
       };
       saveData();
       stopTimer();
       setMode('work');
       syncSettingsUI();
       logShown = 8;
+      checkBadges(true);
       render();
       renderTasks();
       renderLog();
@@ -1409,6 +1548,7 @@ renderTasks();
 renderLog();
 drawWeek();
 drawHeat();
+checkBadges();
 </script>
 </body>
 </html>

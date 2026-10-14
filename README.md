@@ -22,6 +22,7 @@ A tiny pomodoro timer with a pixel-art mikan tree that grows as you complete foc
 - 🎯 Daily goal — set a mikan target for the day, watch the progress bar fill (streak counter 🔥 included)
 - 📖 Session log — every finished focus session is recorded (time, task, minutes)
 - 📝 Session notes — attach a one-line memo to any session in the log (edit inline, saved with your data, included in backups)
+- 🏅 Achievement badges — 14 badges to collect (sessions, total minutes, streaks, tree growth, daily goal, memos, night/morning focus); locked ones show live progress, and unlocking pops a toast; saved with your data
 - ⚡ Focus presets — 15/25/45/60分 quick buttons to set the focus length in one tap
 - 📋 Task list — each focus session adds a 🍊 to the active task (saved locally)
 - 🌳 Pixel-art mikan tree drawn on canvas — 6 growth stages
@@ -45,7 +46,7 @@ python3 -m http.server 3964
 
 ## Test
 
-E2E suite (Playwright, headless Chromium) — 78 checks covering timer, tasks, chart, persistence, export/import, daily goal + confetti, session log, session notes, focus presets, ambient sound engine, PWA (manifest, service worker, offline reload):
+E2E suite (Playwright, headless Chromium) — 94 checks covering timer, tasks, chart, persistence, export/import, daily goal + confetti, session log, session notes, focus presets, achievement badges (grid, unlocks, toasts, persistence, import recompute), ambient sound engine, PWA (manifest, service worker, offline reload):
 
 ```bash
 uv run --with playwright python tests/e2e.py
@@ -61,6 +62,7 @@ Made for [Hack Club Embassy](https://embassy.hackclub.com/).
 
 ## Changelog
 
+- **v1.10** — 実績バッジ: 14 collectible badges (first mikan / 10 / 50 / 100 sessions, 500 / 1000 total minutes, 3 / 7-day streaks, tree bloom + full bloom, daily goal, first memo, night owl + early bird) derived from your stats with live progress on locked ones and a toast when one unlocks; persisted in your data and recomputed on import; E2E suite extended to 94 checks
 - **v1.9** — セッションメモ + 集中時間プリセット: every session-log entry can carry a one-line note (📝 — add / edit inline, saved with your data and included in backups), and quick preset buttons (15/25/45/60分) set the focus length in one tap; E2E suite extended to 78 checks
 - **v1.8** — セッション延長: a ＋5分 button (and `+` key) extends the current phase by five minutes — the recorded session minutes include the extension; E2E suite extended to 63 checks
 - **v1.7** — 集中モード（Zen mode）: one click (or `Z`) hides the tasks, stats, charts, log and settings so only the timer and the tree stay on screen; `Esc` exits; E2E suite extended to 60 checks
