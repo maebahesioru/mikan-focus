@@ -18,11 +18,14 @@ A tiny pomodoro timer with a pixel-art mikan tree that grows as you complete foc
 ## Features
 
 - 🍅 Pomodoro timer (work/break/long-break, lengths configurable, 4-cycle long break)
+- 🎯 Daily goal — set a mikan target for the day, watch the progress bar fill (streak counter 🔥 included)
+- 📖 Session log — every finished focus session is recorded (time, task, minutes)
 - 📋 Task list — each focus session adds a 🍊 to the active task (saved locally)
 - 🌳 Pixel-art mikan tree drawn on canvas — 6 growth stages
 - 📊 Stats: sessions today / total / focus minutes + 7-day bar chart (canvas)
 - 💾 Backup export / import (JSON) — your data stays yours
 - 🔔 Chime (Web Audio, no files) + desktop notifications
+- 🎉 Pixel confetti when you hit your daily goal or the tree is fully grown
 - 📲 PWA: installable (own icon + manifest) and works fully offline via a service worker
 - ⌨️ Keyboard shortcuts: Space = start/pause, R = reset, S = skip
 - ♿ Accessibility: `role="timer"`, `aria-live` mode/stage announcements
@@ -39,7 +42,7 @@ python3 -m http.server 3964
 
 ## Test
 
-E2E suite (Playwright, headless Chromium) — 28 checks covering timer, tasks, chart, persistence, export/import, PWA (manifest, service worker, offline reload):
+E2E suite (Playwright, headless Chromium) — 43 checks covering timer, tasks, chart, persistence, export/import, daily goal + confetti, session log, PWA (manifest, service worker, offline reload):
 
 ```bash
 uv run --with playwright python tests/e2e.py
@@ -55,6 +58,7 @@ Made for [Hack Club Embassy](https://embassy.hackclub.com/).
 
 ## Changelog
 
+- **v1.4** — daily goal (configurable target + progress bar + 🔥 streak), session log (recent focus sessions with task names), pixel confetti celebration when the goal is reached or the tree is fully grown; storage v3 (with v2 backup import migration); E2E suite extended to 43 checks
 - **v1.3** — PWA: installable app (manifest + generated icons via `tools/make_icons.py`), offline support with a service worker (cache-first app shell), install button; E2E suite extended to 28 checks (incl. offline reload)
 - **v1.2** — task list with per-task mikan counts, 7-day focus chart, backup export/import, a11y improvements, E2E tests
 - **v1.1** — long-break cycles, keyboard shortcuts, tab title countdown, expanded settings, v1→v2 storage migration

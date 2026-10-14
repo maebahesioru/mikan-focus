@@ -135,6 +135,37 @@
   .week-caption { font-size: 0.8rem; color: var(--dim); margin-top: 6px; }
   .settings-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
   .settings-actions button { padding: 9px 16px; font-size: 0.85rem; }
+  /* 今日の目標 + 連続日数 */
+  .goal-row { display: flex; align-items: center; gap: 10px; }
+  .goal-label { font-size: 0.9rem; font-weight: 700; color: #8a6d1a; white-space: nowrap; }
+  .goal-bar { flex: 1; height: 12px; border-radius: 999px; background: #f2e6c8; overflow: hidden; }
+  .goal-fill {
+    height: 100%; width: 0%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width 0.5s;
+  }
+  .goal-fill.done { background: linear-gradient(90deg, #7ab84a, #4a7a2a); }
+  .goal-count { font-size: 0.95rem; font-weight: 800; color: var(--accent2); white-space: nowrap; }
+  .goal-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; min-height: 1.4em; }
+  .goal-streak { font-size: 0.85rem; font-weight: 700; color: var(--accent2); }
+  .goal-banner { font-size: 0.85rem; font-weight: 800; color: #4a7a2a; display: none; }
+  .goal-banner.show { display: inline; animation: pop 0.4s ease; }
+  @keyframes pop { 0% { transform: scale(0.6); } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
+  /* きろく */
+  .log-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .log-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    background: #fff; border: 2px solid #f2e6c8; border-radius: 10px; font-size: 0.85rem;
+  }
+  .log-when { color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .log-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .log-name.none { color: var(--dim); font-style: italic; }
+  .log-mins { color: var(--accent2); font-weight: 700; white-space: nowrap; }
+  .log-empty { font-size: 0.82rem; color: var(--dim); text-align: center; padding: 4px 0; }
+  .log-more { margin-top: 10px; }
+  .log-more button { padding: 8px 16px; font-size: 0.82rem; }
+  /* 紙吹雪 */
+  #confettiCanvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99; }
   footer { text-align: center; color: var(--dim); font-size: 0.8rem; margin: 10px 0 20px; }
 </style>
 </head>
@@ -182,10 +213,29 @@
     <div class="stat"><div class="num" id="statMinutes">0</div><div class="lbl">集中した分（分）</div></div>
   </div>
 
+  <div class="card goal-card">
+    <div class="goal-row">
+      <span class="goal-label">🎯 今日の目標</span>
+      <div class="goal-bar" role="progressbar" aria-label="今日の目標の進み具合"><div class="goal-fill" id="goalFill"></div></div>
+      <span class="goal-count" id="goalCount">0/4</span>
+    </div>
+    <div class="goal-meta">
+      <span class="goal-streak" id="goalStreak"></span>
+      <span class="goal-banner" id="goalBanner">🎉 今日の目標を達成しました！</span>
+    </div>
+  </div>
+
   <div class="card week-card">
     <div class="tree-title">📊 この1週間の集中（分）</div>
     <canvas id="weekCanvas" width="440" height="120" role="img" aria-label="過去7日間の集中時間チャート"></canvas>
     <div class="week-caption" id="weekCaption"></div>
+  </div>
+
+  <div class="card log-card">
+    <div class="task-title">📖 きろく（最近の集中セッション）</div>
+    <ul class="log-list" id="logList"></ul>
+    <div class="log-empty" id="logEmpty">集中タイムを完了すると、ここにきろくが残ります🍊</div>
+    <div class="log-more"><button class="btn-sub" id="logMoreBtn" hidden>もっと見る</button></div>
   </div>
 
   <div class="card settings">
@@ -196,6 +246,7 @@
         <label>休憩（分）<input type="number" id="breakMin" min="1" max="60" value="5"></label>
         <label>ロング休憩（分）<input type="number" id="longBreakMin" min="1" max="90" value="15"></label>
         <label>何回でロング休憩<input type="number" id="cyclesPerLong" min="2" max="8" value="4"></label>
+        <label>1日の目標（みかん）<input type="number" id="dailyGoal" min="1" max="20" value="4"></label>
       </div>
       <div class="settings-toggles">
         <label><input type="checkbox" id="soundOn" checked> 通知音</label>
@@ -210,17 +261,19 @@
     </details>
   </div>
 
-  <footer>みかんフォーカス v1.3 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.4 — Embassy プロジェクト / データはブラウザに保存されます</footer>
 </div>
+<canvas id="confettiCanvas" aria-hidden="true"></canvas>
 
 <script>
-// ===== 保存データ (v2) =====
+// ===== 保存データ (v3) =====
 const STORE_KEY = 'mikan-focus';
 const BASE_TITLE = 'みかんフォーカス - Mikan Focus';
 const DEFAULT_SETTINGS = {
   workMin: 25, breakMin: 5, longBreakMin: 15, cyclesPerLong: 4,
-  soundOn: true, notifyOn: true, autoStartNext: false,
+  soundOn: true, notifyOn: true, autoStartNext: false, dailyGoal: 4,
 };
+const HISTORY_MAX = 300;
 
 function dayKey(dt = new Date()) {
   const y = dt.getFullYear();
@@ -233,16 +286,19 @@ function loadData() {
   let raw = {};
   try { raw = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch {}
   const d = {
-    v: 2,
+    v: 3,
     settings: Object.assign({}, DEFAULT_SETTINGS, raw.settings || {}),
     stats: raw.stats || { sessionsTotal: 0, minutesTotal: 0, days: {} },
     cycleCount: raw.cycleCount || 0,
     growth: raw.growth || 0,
     tasks: raw.tasks || [],
     activeTaskId: raw.activeTaskId || null,
+    history: Array.isArray(raw.history) ? raw.history : [],
+    goalCelebrated: raw.goalCelebrated || '',
+    treeCelebrated: !!raw.treeCelebrated,
   };
   if (!raw.v) {
-    // v1 → v2 移行
+    // v1 → v2/v3 移行
     if (raw.sessionsTotal) d.stats.sessionsTotal = raw.sessionsTotal;
     if (raw.minutesTotal) d.stats.minutesTotal = raw.minutesTotal;
     if (raw.growth) d.growth = raw.growth;
@@ -322,6 +378,7 @@ function render() {
   renderDots();
   renderTree();
   renderStats();
+  renderGoal();
   updateTitle();
 }
 
@@ -352,6 +409,33 @@ function renderStats() {
   document.getElementById('statMinutes').textContent = data.stats.minutesTotal;
 }
 
+// ===== 今日の目標 & 連続日数 =====
+function computeStreak() {
+  // 今日（または昨日まで）から遡って、連続してセッションがある日数を数える
+  let streak = 0;
+  const dt = new Date();
+  if (!((data.stats.days[dayKey(dt)] || {}).sessions > 0)) dt.setDate(dt.getDate() - 1);
+  for (;;) {
+    const d = data.stats.days[dayKey(dt)];
+    if (d && d.sessions > 0) { streak += 1; dt.setDate(dt.getDate() - 1); } else break;
+  }
+  return streak;
+}
+
+function renderGoal() {
+  const goal = Math.max(1, data.settings.dailyGoal);
+  const today = data.stats.days[dayKey()] || { sessions: 0 };
+  const n = Math.min(today.sessions, goal);
+  const done = today.sessions >= goal;
+  const fill = document.getElementById('goalFill');
+  fill.style.width = Math.round((n / goal) * 100) + '%';
+  fill.classList.toggle('done', done);
+  document.getElementById('goalCount').textContent = `${today.sessions}/${goal}`;
+  const streak = computeStreak();
+  document.getElementById('goalStreak').textContent = streak > 1 ? `🔥 ${streak}日連続で集中中！` : (streak === 1 ? '🔥 今日も集中できた！' : '');
+  document.getElementById('goalBanner').classList.toggle('show', done && data.goalCelebrated === dayKey());
+}
+
 // ===== サウンド（Web Audio） =====
 let audioCtx = null;
 function chime() {
@@ -372,6 +456,44 @@ function chime() {
       osc.stop(audioCtx.currentTime + i * 0.18 + 1.0);
     });
   } catch {}
+}
+
+// ===== お祝いの紙吹雪（ピクセル紙吹雪） =====
+const confettiCanvas = document.getElementById('confettiCanvas');
+const cctx = confettiCanvas.getContext('2d');
+let confettiParts = [];
+let confettiRAF = null;
+
+function celebrate() {
+  confettiCanvas.width = window.innerWidth;
+  confettiCanvas.height = window.innerHeight;
+  const colors = ['#f5a623', '#e8890c', '#6a9e3f', '#7ab84a', '#fffbe8', '#e74c3c', '#7aa8d0'];
+  confettiParts = [];
+  for (let i = 0; i < 140; i++) {
+    confettiParts.push({
+      x: Math.random() * confettiCanvas.width,
+      y: -30 - Math.random() * confettiCanvas.height * 0.4,
+      vx: (Math.random() - 0.5) * 2.6,
+      vy: 2 + Math.random() * 3.2,
+      s: 4 + Math.floor(Math.random() * 5),
+      c: colors[i % colors.length],
+    });
+  }
+  const t0 = performance.now();
+  if (confettiRAF) cancelAnimationFrame(confettiRAF);
+  function frame(now) {
+    cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+    for (const pt of confettiParts) {
+      pt.x += pt.vx;
+      pt.y += pt.vy;
+      pt.vy += 0.04;
+      cctx.fillStyle = pt.c;
+      cctx.fillRect(Math.round(pt.x), Math.round(pt.y), pt.s, pt.s);
+    }
+    if (now - t0 < 3200) confettiRAF = requestAnimationFrame(frame);
+    else { cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height); confettiRAF = null; }
+  }
+  confettiRAF = requestAnimationFrame(frame);
 }
 
 // ===== タイマーロジック =====
@@ -406,10 +528,24 @@ function complete() {
     // アクティブなタスクにみかんを加算
     const task = data.tasks.find(t => t.id === data.activeTaskId);
     if (task) task.pomos = (task.pomos || 0) + 1;
+    // きろくに追加（新しい順・最大300件）
+    data.history.unshift({ t: Date.now(), mins, task: task ? task.name : null });
+    if (data.history.length > HISTORY_MAX) data.history.length = HISTORY_MAX;
+    // 今日の目標を達成したら（1日1回）お祝い
+    if (day.sessions >= Math.max(1, data.settings.dailyGoal) && data.goalCelebrated !== key) {
+      data.goalCelebrated = key;
+      celebrate();
+    }
+    // 木が満開になったら（初回のみ）お祝い
+    if (data.growth >= 100 && !data.treeCelebrated) {
+      data.treeCelebrated = true;
+      celebrate();
+    }
     const isLong = data.cycleCount % Math.max(2, data.settings.cyclesPerLong) === 0;
     setMode(isLong ? 'long' : 'break');
     saveData();
     renderTasks();
+    renderLog();
     drawWeek();
     notify('🍊 みかんが実りました！', isLong ? 'ロング休憩の時間です。' : '休憩タイムです。');
   } else {
@@ -501,6 +637,7 @@ bindNumberInput('workMin', 'workMin', 1, 120, 25);
 bindNumberInput('breakMin', 'breakMin', 1, 60, 5);
 bindNumberInput('longBreakMin', 'longBreakMin', 1, 90, 15);
 bindNumberInput('cyclesPerLong', 'cyclesPerLong', 2, 8, 4);
+bindNumberInput('dailyGoal', 'dailyGoal', 1, 20, 4);
 
 function bindToggle(id, key) {
   const el = document.getElementById(id);
@@ -742,9 +879,49 @@ function drawWeek() {
   document.getElementById('weekCaption').textContent = `7日間の合計: ${totalMin}分 / みかん${totalSes}個`;
 }
 
+// ===== きろく（セッション履歴） =====
+const logListEl = document.getElementById('logList');
+const logEmptyEl = document.getElementById('logEmpty');
+const logMoreBtn = document.getElementById('logMoreBtn');
+let logShown = 8;
+
+function fmtWhen(ts) {
+  const dt = new Date(ts);
+  const mm = String(dt.getMinutes()).padStart(2, '0');
+  return `${dt.getMonth() + 1}/${dt.getDate()} ${dt.getHours()}:${mm}`;
+}
+
+function renderLog() {
+  const items = data.history || [];
+  logListEl.innerHTML = '';
+  logEmptyEl.style.display = items.length ? 'none' : '';
+  const slice = items.slice(0, logShown);
+  for (const h of slice) {
+    const li = document.createElement('li');
+    li.className = 'log-item';
+    const when = document.createElement('span');
+    when.className = 'log-when';
+    when.textContent = fmtWhen(h.t);
+    const name = document.createElement('span');
+    name.className = 'log-name' + (h.task ? '' : ' none');
+    name.textContent = h.task || '（タスクなし）';
+    const mins = document.createElement('span');
+    mins.className = 'log-mins';
+    mins.textContent = `🍊 +${h.mins}分`;
+    li.append(when, name, mins);
+    logListEl.appendChild(li);
+  }
+  logMoreBtn.hidden = items.length <= logShown;
+}
+
+logMoreBtn.addEventListener('click', () => {
+  logShown += 24;
+  renderLog();
+});
+
 // ===== エクスポート / インポート =====
 function syncSettingsUI() {
-  for (const id of ['workMin', 'breakMin', 'longBreakMin', 'cyclesPerLong']) {
+  for (const id of ['workMin', 'breakMin', 'longBreakMin', 'cyclesPerLong', 'dailyGoal']) {
     document.getElementById(id).value = data.settings[id];
   }
   document.getElementById('soundOn').checked = !!data.settings.soundOn;
@@ -776,20 +953,25 @@ importFile.addEventListener('change', () => {
         throw new Error('invalid backup');
       }
       data = {
-        v: 2,
+        v: 3,
         settings: Object.assign({}, DEFAULT_SETTINGS, imported.settings || {}),
         stats: Object.assign({ sessionsTotal: 0, minutesTotal: 0, days: {} }, imported.stats),
         cycleCount: imported.cycleCount || 0,
         growth: imported.growth || 0,
         tasks: Array.isArray(imported.tasks) ? imported.tasks : [],
         activeTaskId: imported.activeTaskId || null,
+        history: Array.isArray(imported.history) ? imported.history : [],
+        goalCelebrated: imported.goalCelebrated || '',
+        treeCelebrated: !!imported.treeCelebrated,
       };
       saveData();
       stopTimer();
       setMode('work');
       syncSettingsUI();
+      logShown = 8;
       render();
       renderTasks();
+      renderLog();
       drawWeek();
       notify('📥 データを読み込みました', 'バックアップから復元しました。');
     } catch {
@@ -829,6 +1011,7 @@ if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
 setMode('work');
 render();
 renderTasks();
+renderLog();
 drawWeek();
 </script>
 </body>

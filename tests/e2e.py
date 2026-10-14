@@ -91,6 +91,16 @@ async def main():
         results["tree_stage"] = await page.text_content("#treeStage")
         check("tree grew (sprout)", "芽" in results["tree_stage"], results["tree_stage"])
 
+        # 5b. v1.4: session history log + daily goal counter
+        results["log_count"] = await page.locator(".log-item").count()
+        check("history log shows 1 entry", results["log_count"] == 1, str(results["log_count"]))
+        results["log_first"] = await page.locator(".log-item").nth(0).text_content()
+        check("history entry has task B + 25分", "テストタスクB" in results["log_first"] and "25分" in results["log_first"], results["log_first"])
+        results["goal_count"] = await page.text_content("#goalCount")
+        check("goal counter 1/4", results["goal_count"] == "1/4", results["goal_count"])
+        results["goal_streak"] = await page.text_content("#goalStreak")
+        check("streak text shown", "集中できた" in results["goal_streak"], results["goal_streak"])
+
         # 6. week chart drawn (non-transparent pixels) + caption
         px = await page.evaluate(
             """() => { const c=document.getElementById('weekCanvas');
@@ -102,13 +112,44 @@ async def main():
         results["week_caption"] = await page.text_content("#weekCaption")
         check("week caption shows 25分", "25分" in results["week_caption"], results["week_caption"])
 
+        # 6b. v1.4: reach the daily goal (4 sessions) → banner + confetti + goal bar
+        await page.evaluate(
+            "for (let i = 0; i < 3; i++) { state.mode = 'work'; state.totalSec = 1500; state.remain = 0; complete(); }"
+        )
+        await page.wait_for_timeout(350)
+        results["stat_today_goal"] = await page.text_content("#statToday")
+        check("today count = 4 after goal loop", results["stat_today_goal"] == "4", results["stat_today_goal"])
+        results["goal_count2"] = await page.text_content("#goalCount")
+        check("goal counter 4/4", results["goal_count2"] == "4/4", results["goal_count2"])
+        results["goal_banner_shown"] = await page.evaluate(
+            "document.getElementById('goalBanner').classList.contains('show')"
+        )
+        check("goal banner shown", results["goal_banner_shown"] is True)
+        results["goal_fill_done"] = await page.evaluate(
+            "document.getElementById('goalFill').classList.contains('done')"
+        )
+        check("goal bar done state", results["goal_fill_done"] is True)
+        conf_px = await page.evaluate(
+            """() => { const c = document.getElementById('confettiCanvas');
+                 const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+                 let n = 0; for (let i = 3; i < d.length; i += 4) { if (d[i] > 0) n++; } return n; }"""
+        )
+        results["confetti_pixels"] = conf_px
+        check("confetti painted on goal", conf_px > 0, str(conf_px))
+        results["log_count4"] = await page.locator(".log-item").count()
+        check("history has 4 entries", results["log_count4"] == 4, str(results["log_count4"]))
+
         # 7. persistence across reload
         await page.reload()
         await page.wait_for_timeout(400)
         results["task_count_reload"] = await page.locator(".task-item").count()
         results["stat_total_reload"] = await page.text_content("#statTotal")
         check("tasks persisted", results["task_count_reload"] == 2, str(results["task_count_reload"]))
-        check("stats persisted", results["stat_total_reload"] == "1", results["stat_total_reload"])
+        check("stats persisted", results["stat_total_reload"] == "4", results["stat_total_reload"])
+        results["log_count_reload"] = await page.locator(".log-item").count()
+        check("history persisted (4 entries)", results["log_count_reload"] == 4, str(results["log_count_reload"]))
+        results["goal_count_reload"] = await page.text_content("#goalCount")
+        check("goal persisted 4/4", results["goal_count_reload"] == "4/4", results["goal_count_reload"])
 
         # 8. export download (settings <details> must be open first)
         await page.evaluate("document.querySelector('.settings details').open = true")
@@ -121,18 +162,21 @@ async def main():
             path = await dl.path()
             backup = json.loads(pathlib.Path(path).read_text())
             results["backup_tasks"] = len(backup.get("tasks", []))
-            check("export produced backup", backup.get("stats", {}).get("sessionsTotal") == 1, str(backup.get("stats")))
+            check("export produced backup", backup.get("stats", {}).get("sessionsTotal") == 4, str(backup.get("stats")))
+            results["backup_history"] = len(backup.get("history", []))
+            check("export includes history", results["backup_history"] == 4, str(results["backup_history"]))
         except Exception as e:  # noqa: BLE001
             results["download_error"] = str(e)
             check("export produced backup", False, str(e))
 
-        # 9. import restores a crafted backup
+        # 9. import restores a crafted backup (v2 → v3 migration path)
+        today_key = await page.evaluate("dayKey()")
         crafted = {
             "v": 2,
             "settings": {"workMin": 50, "breakMin": 5, "longBreakMin": 15, "cyclesPerLong": 4,
                           "soundOn": False, "notifyOn": True, "autoStartNext": False},
             "stats": {"sessionsTotal": 12, "minutesTotal": 300,
-                       "days": {"2026-10-14": {"sessions": 3, "minutes": 75}}},
+                       "days": {today_key: {"sessions": 3, "minutes": 75}}},
             "cycleCount": 3, "growth": 37.5,
             "tasks": [{"id": "x1", "name": "復元タスク", "pomos": 5}],
             "activeTaskId": "x1",
@@ -148,6 +192,12 @@ async def main():
         check("import restored settings", results["import_workMin"] == "50", results["import_workMin"])
         check("import restored stats", results["import_statTotal"] == "12", results["import_statTotal"])
         check("import restored tasks", "復元タスク" in results["import_task"], results["import_task"])
+        results["log_empty_after_import"] = await page.evaluate(
+            "document.getElementById('logEmpty').style.display !== 'none'"
+        )
+        check("log empty after v2 import (no history)", results["log_empty_after_import"] is True)
+        results["goal_count_import"] = await page.text_content("#goalCount")
+        check("goal counter from imported day 3/4", results["goal_count_import"] == "3/4", results["goal_count_import"])
 
         # 10. reset button
         await page.click("#resetBtn")
@@ -189,7 +239,7 @@ async def main():
             cache_info = await page2.evaluate(
                 """async () => {
                      const keys = await caches.keys();
-                     const c = await caches.open('mikan-focus-v1.3');
+                     const c = await caches.open('mikan-focus-v1.4');
                      const hit = await c.match('./index.html');
                      return {keys, indexCached: !!hit};
                    }"""
