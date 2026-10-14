@@ -59,6 +59,7 @@ Made for [Hack Club Embassy](https://embassy.hackclub.com/).
 
 ## Changelog
 
+- **v1.7** — 集中モード（Zen mode）: one click (or `Z`) hides the tasks, stats, charts, log and settings so only the timer and the tree stay on screen; `Esc` exits; E2E suite extended to 60 checks
 - **v1.6** — きろくカレンダー: a 15-week focus heatmap (GitHub-contribution style) with per-day color levels, month labels, today outline, and hover details (day → minutes / mikans); E2E suite extended to 54 checks
 - **v1.5** — procedural ambient sounds: rain / waves / campfire / brown noise generated entirely in Web Audio (no audio files), volume slider, plays while a focus session runs; E2E suite extended to 47 checks
 - **v1.4** — daily goal (configurable target + progress bar + 🔥 streak), session log (recent focus sessions with task names), pixel confetti celebration when the goal is reached or the tree is fully grown; storage v3 (with v2 backup import migration); E2E suite extended to 43 checks

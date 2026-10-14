@@ -194,6 +194,29 @@ async def main():
         results["heat_hover_out"] = await page.text_content("#heatCaption")
         check("heatmap hover-out restores summary", "15週間の合計" in (results["heat_hover_out"] or ""), results["heat_hover_out"])
 
+        # 6d. v1.7: zen mode (集中モード)
+        check("zen off by default", await page.evaluate("!document.body.classList.contains('zen')"))
+        await page.click("#zenBtn")
+        await page.wait_for_timeout(250)
+        check("zen toggles on via button", await page.evaluate("document.body.classList.contains('zen')"))
+        hidden = await page.evaluate(
+            """() => ['.task-card', '.stats', '.goal-card', '.log-card', '.settings']
+                 .map(s => { const el = document.querySelector(s);
+                             return s + '=' + (el ? getComputedStyle(el).display === 'none' : 'missing'); })
+                 .join(',')"""
+        )
+        check("zen hides side cards", all(p.endswith("=true") for p in hidden.split(",")), hidden)
+        results["zen_btn_label"] = await page.text_content("#zenBtn")
+        check("zen button label flips", "終了" in results["zen_btn_label"], results["zen_btn_label"])
+        await page.keyboard.press("z")
+        await page.wait_for_timeout(250)
+        check("zen toggles off via Z key", await page.evaluate("!document.body.classList.contains('zen')"))
+        await page.click("#zenBtn")
+        await page.wait_for_timeout(150)
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(250)
+        check("Escape exits zen", await page.evaluate("!document.body.classList.contains('zen')"))
+
         # 7. persistence across reload
         await page.reload()
         await page.wait_for_timeout(400)
