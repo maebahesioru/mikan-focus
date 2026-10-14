@@ -77,6 +77,26 @@ async def main():
         results["btn_paused"] = await page.text_content("#startBtn")
         check("pause shows つづける", results["btn_paused"] == "つづける", results["btn_paused"])
 
+        # 4b. v1.5: procedural ambient sound engine (rain/waves/fire/noise)
+        await page.evaluate("document.querySelector('.settings details').open = true")
+        await page.wait_for_timeout(150)
+        await page.select_option("#ambientSel", "rain")
+        results["ambient_setting"] = await page.evaluate("data.settings.ambient")
+        check("ambient setting saved", results["ambient_setting"] == "rain", results["ambient_setting"])
+        await page.click("#startBtn")  # resume work timer -> ambient starts
+        await page.wait_for_timeout(400)
+        results["ambient_playing"] = await page.evaluate("ambient ? ambient.type : null")
+        check("ambient plays on work start", results["ambient_playing"] == "rain", str(results["ambient_playing"]))
+        await page.locator("#ambientVol").fill("60")
+        await page.wait_for_timeout(150)
+        results["ambient_vol"] = await page.evaluate("data.settings.ambientVol")
+        results["ambient_vol_label"] = await page.text_content("#ambientVolLabel")
+        check("volume slider saves + label", abs(results["ambient_vol"] - 0.6) < 1e-9 and results["ambient_vol_label"] == "60%",
+              f"{results['ambient_vol']} / {results['ambient_vol_label']}")
+        await page.click("#startBtn")  # pause -> ambient stops
+        results["ambient_stopped"] = await page.evaluate("ambient === null")
+        check("ambient stops on pause", results["ambient_stopped"] is True)
+
         # 5. complete a work session (fast-forward via script scope)
         await page.evaluate("state.remain = 2; state.lastTick = Date.now() - 3000; tick();")
         await page.wait_for_timeout(300)
@@ -239,7 +259,7 @@ async def main():
             cache_info = await page2.evaluate(
                 """async () => {
                      const keys = await caches.keys();
-                     const c = await caches.open('mikan-focus-v1.4');
+                     const c = await caches.open('mikan-focus-v1.5');
                      const hit = await c.match('./index.html');
                      return {keys, indexCached: !!hit};
                    }"""

@@ -104,6 +104,12 @@
     display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #8a6d1a; cursor: pointer;
   }
   .settings-toggles input { width: 16px; height: 16px; accent-color: var(--accent2); cursor: pointer; }
+  .settings-toggles select {
+    padding: 6px 10px; border: 2px solid #f2e6c8; border-radius: 10px;
+    font-family: inherit; font-size: 0.85rem; color: var(--ink); background: #fff; cursor: pointer;
+  }
+  .settings-toggles input[type=range] { width: 130px; accent-color: var(--accent2); cursor: pointer; }
+  #ambientVolLabel { font-size: 0.8rem; color: var(--dim); min-width: 2.6em; }
   /* タスクリスト */
   .task-card .task-title { font-size: 0.95rem; font-weight: 700; color: #8a6d1a; margin-bottom: 10px; }
   .task-add { display: flex; gap: 8px; margin-bottom: 12px; }
@@ -253,6 +259,21 @@
         <label><input type="checkbox" id="notifyOn" checked> デスクトップ通知</label>
         <label><input type="checkbox" id="autoStartNext"> 次のフェーズを自動開始</label>
       </div>
+      <div class="settings-toggles">
+        <label>🌧 環境音
+          <select id="ambientSel">
+            <option value="off">なし</option>
+            <option value="rain">雨</option>
+            <option value="waves">波</option>
+            <option value="fire">焚き火</option>
+            <option value="noise">ノイズ（ブラウン）</option>
+          </select>
+        </label>
+        <label>音量
+          <input type="range" id="ambientVol" min="0" max="100" step="5" value="35">
+          <span id="ambientVolLabel">35%</span>
+        </label>
+      </div>
       <div class="settings-actions">
         <button class="btn-sub" id="exportBtn">💾 データを書き出す</button>
         <button class="btn-sub" id="importBtn">📥 データを読み込む</button>
@@ -261,7 +282,7 @@
     </details>
   </div>
 
-  <footer>みかんフォーカス v1.4 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.5 — Embassy プロジェクト / データはブラウザに保存されます</footer>
 </div>
 <canvas id="confettiCanvas" aria-hidden="true"></canvas>
 
@@ -272,6 +293,7 @@ const BASE_TITLE = 'みかんフォーカス - Mikan Focus';
 const DEFAULT_SETTINGS = {
   workMin: 25, breakMin: 5, longBreakMin: 15, cyclesPerLong: 4,
   soundOn: true, notifyOn: true, autoStartNext: false, dailyGoal: 4,
+  ambient: 'off', ambientVol: 0.35,
 };
 const HISTORY_MAX = 300;
 
@@ -496,6 +518,105 @@ function celebrate() {
   confettiRAF = requestAnimationFrame(frame);
 }
 
+// ===== 環境音（プロシージャル生成 — 音声ファイル不要） =====
+let ambient = null; // { src, gain, filter, lfo, blipTimer, type }
+
+function ensureAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  return audioCtx;
+}
+
+function makeBrownNoiseBuffer(ctx, seconds) {
+  const len = Math.floor(ctx.sampleRate * seconds);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < len; i++) {
+    const white = Math.random() * 2 - 1;
+    last = (last + 0.02 * white) / 1.02;
+    d[i] = last * 3.5;
+  }
+  return buf;
+}
+
+function stopAmbient() {
+  if (!ambient) return;
+  try { ambient.src.stop(); } catch {}
+  try { if (ambient.lfo) ambient.lfo.stop(); } catch {}
+  try { if (ambient.blipTimer) clearInterval(ambient.blipTimer); } catch {}
+  try { ambient.gain.disconnect(); } catch {}
+  ambient = null;
+}
+
+function ambientBlip(freq, dur, vol) {
+  const ctx = audioCtx;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  const t = ctx.currentTime;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(g).connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.05);
+}
+
+function startAmbient(type) {
+  stopAmbient();
+  if (!type || type === 'off') return;
+  try {
+    const ctx = ensureAudioCtx();
+    const src = ctx.createBufferSource();
+    src.buffer = makeBrownNoiseBuffer(ctx, 3);
+    src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    const gain = ctx.createGain();
+    const vol = Math.max(0.01, data.settings.ambientVol);
+    gain.gain.value = 0.0001;
+
+    if (type === 'rain') { filter.type = 'highpass'; filter.frequency.value = 450; filter.Q.value = 0.6; }
+    else if (type === 'waves') { filter.type = 'lowpass'; filter.frequency.value = 480; }
+    else if (type === 'fire') { filter.type = 'lowpass'; filter.frequency.value = 850; }
+    else { filter.type = 'lowpass'; filter.frequency.value = 1400; }
+
+    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.start();
+    gain.gain.exponentialRampToValueAtTime(vol, ctx.currentTime + 1.4);
+    ambient = { src, gain, filter, lfo: null, blipTimer: null, type };
+
+    if (type === 'waves') {
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+      lfo.frequency.value = 0.09;
+      lfoGain.gain.value = vol * 0.55;
+      lfo.connect(lfoGain).connect(gain.gain);
+      lfo.start();
+      ambient.lfo = lfo;
+      ambient.lfoGain = lfoGain;
+    }
+    if (type === 'fire') {
+      ambient.blipTimer = setInterval(() => {
+        if (Math.random() < 0.45) ambientBlip(90 + Math.random() * 260, 0.04 + Math.random() * 0.05, vol * 0.5);
+      }, 240);
+    }
+    if (type === 'rain') {
+      ambient.blipTimer = setInterval(() => {
+        if (Math.random() < 0.3) ambientBlip(1800 + Math.random() * 2600, 0.03, vol * 0.12);
+      }, 170);
+    }
+  } catch {}
+}
+
+function ambientVolume(v) {
+  if (!ambient) return;
+  const vol = Math.max(0.01, v);
+  try { ambient.gain.gain.setTargetAtTime(vol, audioCtx.currentTime, 0.15); } catch {}
+  if (ambient.lfoGain) { try { ambient.lfoGain.gain.setTargetAtTime(vol * 0.55, audioCtx.currentTime, 0.15); } catch {} }
+}
+
 // ===== タイマーロジック =====
 function tick() {
   const now = Date.now();
@@ -571,6 +692,7 @@ function startTimer() {
   state.running = true;
   state.lastTick = Date.now();
   state.timer = setInterval(tick, 250);
+  if (state.mode === 'work') startAmbient(data.settings.ambient);
   if (data.settings.notifyOn && 'Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
   }
@@ -580,6 +702,7 @@ function startTimer() {
 function stopTimer() {
   state.running = false;
   if (state.timer) { clearInterval(state.timer); state.timer = null; }
+  stopAmbient();
 }
 
 function toggleTimer() {
@@ -650,6 +773,23 @@ function bindToggle(id, key) {
 bindToggle('soundOn', 'soundOn');
 bindToggle('notifyOn', 'notifyOn');
 bindToggle('autoStartNext', 'autoStartNext');
+
+// 環境音セレクト + 音量スライダー
+const ambientSel = document.getElementById('ambientSel');
+const ambientVol = document.getElementById('ambientVol');
+const ambientVolLabel = document.getElementById('ambientVolLabel');
+ambientSel.addEventListener('change', () => {
+  data.settings.ambient = ambientSel.value;
+  saveData();
+  if (state.running && state.mode === 'work') startAmbient(data.settings.ambient);
+});
+ambientVol.addEventListener('input', () => {
+  const v = parseInt(ambientVol.value) || 0;
+  data.settings.ambientVol = v / 100;
+  ambientVolLabel.textContent = v + '%';
+  saveData();
+  ambientVolume(v / 100);
+});
 
 // ===== みかんの木（ピクセルアート風canvas描画） =====
 const treeCanvas = document.getElementById('treeCanvas');
@@ -927,6 +1067,10 @@ function syncSettingsUI() {
   document.getElementById('soundOn').checked = !!data.settings.soundOn;
   document.getElementById('notifyOn').checked = !!data.settings.notifyOn;
   document.getElementById('autoStartNext').checked = !!data.settings.autoStartNext;
+  document.getElementById('ambientSel').value = data.settings.ambient || 'off';
+  const volPct = Math.round((data.settings.ambientVol ?? 0.35) * 100);
+  document.getElementById('ambientVol').value = volPct;
+  document.getElementById('ambientVolLabel').textContent = volPct + '%';
 }
 
 document.getElementById('exportBtn').addEventListener('click', () => {
