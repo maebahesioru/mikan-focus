@@ -217,6 +217,22 @@ async def main():
         await page.wait_for_timeout(250)
         check("Escape exits zen", await page.evaluate("!document.body.classList.contains('zen')"))
 
+        # 6e. v1.8: +5 min extend
+        r0 = await page.evaluate("state.remain")
+        s0 = await page.evaluate("state.totalSec")
+        await page.click("#extendBtn")
+        await page.wait_for_timeout(250)
+        r1 = await page.evaluate("state.remain")
+        s1 = await page.evaluate("state.totalSec")
+        check("extend adds 300s to remain+total", r1 == r0 + 300 and s1 == s0 + 300, f"{r0}->{r1} / {s0}->{s1}")
+        d0 = await page.text_content("#timeDisplay")
+        await page.keyboard.press("+")
+        await page.wait_for_timeout(250)
+        r2 = await page.evaluate("state.remain")
+        d1 = await page.text_content("#timeDisplay")
+        check("extend via + key", r2 == r1 + 300, f"{r1} -> {r2}")
+        check("display updated after extends", d0 != d1, f"{d0} -> {d1}")
+
         # 7. persistence across reload
         await page.reload()
         await page.wait_for_timeout(400)

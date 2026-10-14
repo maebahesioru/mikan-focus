@@ -198,9 +198,10 @@
       <button class="btn-main" id="startBtn">スタート</button>
       <button class="btn-sub" id="resetBtn">リセット</button>
       <button class="btn-sub" id="skipBtn">スキップ</button>
+      <button class="btn-sub" id="extendBtn">＋5分</button>
       <button class="btn-sub" id="zenBtn" aria-pressed="false">🧘 集中モード</button>
     </div>
-    <div class="hint">⌨️ スペース = 開始/一時停止　R = リセット　S = スキップ　Z = 集中モード</div>
+    <div class="hint">⌨️ スペース = 開始/一時停止　R = リセット　S = スキップ　Z = 集中モード　＋ = 5分延長</div>
     <div class="active-task-line" id="activeTaskLine"></div>
   </div>
 
@@ -295,7 +296,7 @@
     </details>
   </div>
 
-  <footer>みかんフォーカス v1.7 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.8 — Embassy プロジェクト / データはブラウザに保存されます</footer>
 </div>
 <canvas id="confettiCanvas" aria-hidden="true"></canvas>
 
@@ -382,6 +383,7 @@ const progressFill = document.getElementById('progressFill');
 const startBtn = document.getElementById('startBtn');
 const resetBtn = document.getElementById('resetBtn');
 const skipBtn = document.getElementById('skipBtn');
+const extendBtn = document.getElementById('extendBtn');
 const cycleDots = document.getElementById('cycleDots');
 
 function fmt(sec) {
@@ -745,6 +747,14 @@ startBtn.addEventListener('click', toggleTimer);
 resetBtn.addEventListener('click', resetTimer);
 skipBtn.addEventListener('click', skipPhase);
 
+// ===== セッション延長（+5分）: あと少しだけ集中したいときに =====
+function extendTimer() {
+  state.remain += 300;
+  state.totalSec += 300;
+  render();
+}
+extendBtn.addEventListener('click', extendTimer);
+
 // ===== キーボードショートカット =====
 // 集中モード（Zen）: タイマーと木だけを残して集中に集中する
 const zenBtn = document.getElementById('zenBtn');
@@ -762,6 +772,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 's' || e.key === 'S') { skipPhase(); }
   else if (e.key === 'z' || e.key === 'Z') { setZen(!document.body.classList.contains('zen')); }
   else if (e.key === 'Escape') { if (document.body.classList.contains('zen')) setZen(false); }
+  else if (e.key === '+' || e.key === '=') { extendTimer(); }
 });
 
 // ===== 設定 =====
