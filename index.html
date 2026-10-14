@@ -356,12 +356,13 @@
       <div class="settings-actions">
         <button class="btn-sub" id="exportBtn">💾 データを書き出す</button>
         <button class="btn-sub" id="importBtn">📥 データを読み込む</button>
+        <button class="btn-sub" id="csvBtn">📊 きろくをCSVで書き出す</button>
         <input type="file" id="importFile" accept=".json,application/json" hidden>
       </div>
     </details>
   </div>
 
-  <footer>みかんフォーカス v1.10 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.11 — Embassy プロジェクト / データはブラウザに保存されます</footer>
 </div>
 <div id="badgeToastWrap" aria-live="polite"></div>
 <canvas id="confettiCanvas" aria-hidden="true"></canvas>
@@ -1465,6 +1466,33 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `mikan-focus-backup-${dayKey()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+// ===== v1.11: きろくをCSVで書き出す（Excel対応: BOM付きUTF-8） =====
+document.getElementById('csvBtn').addEventListener('click', () => {
+  const pad = (n) => String(n).padStart(2, '0');
+  const esc = (s) => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
+  const rows = [['date', 'time', 'minutes', 'task', 'note']];
+  const items = (data.history || []).slice().sort((a, b) => a.t - b.t);
+  for (const h of items) {
+    const dt = new Date(h.t);
+    rows.push([
+      `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`,
+      `${pad(dt.getHours())}:${pad(dt.getMinutes())}`,
+      h.mins,
+      esc(h.task || ''),
+      esc(h.note || ''),
+    ]);
+  }
+  const csv = '\ufeff' + rows.map(r => r.join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `mikan-focus-log-${dayKey()}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();

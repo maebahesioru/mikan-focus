@@ -7,9 +7,9 @@ Run:
 Covers: timer start/pause/tick, work-session completion (stats/growth/task pomo),
 task list CRUD + persistence, week chart pixels, export download, import restore,
 reload persistence, zero JS errors, achievement badges (v1.10: grid, unlock on
-session / goal / memo, toasts, persistence, import recompute). Plus PWA phase
-(HTTP-served): manifest, service worker registration, cache population, offline
-reload, install button.
+session / goal / memo, toasts, persistence, import recompute), CSV session-log
+export (v1.11). Plus PWA phase (HTTP-served): manifest, service worker
+registration, cache population, offline reload, install button.
 """
 import asyncio
 import functools
@@ -348,6 +348,28 @@ async def main():
         except Exception as e:  # noqa: BLE001
             results["download_error"] = str(e)
             check("export produced backup", False, str(e))
+
+        # 8b. v1.11: CSV export of the session log
+        try:
+            async with page.expect_download(timeout=5000) as dl2_info:
+                await page.click("#csvBtn")
+            dl2 = await dl2_info.value
+            results["csv_name"] = dl2.suggested_filename
+            csv_path = await dl2.path()
+            csv_text = pathlib.Path(csv_path).read_text(encoding="utf-8-sig")
+            csv_lines = [l for l in csv_text.splitlines() if l.strip()]
+            results["csv_lines"] = len(csv_lines)
+            check("CSV download named mikan-focus-log-*.csv",
+                  results["csv_name"].startswith("mikan-focus-log-") and results["csv_name"].endswith(".csv"),
+                  str(results["csv_name"]))
+            check("CSV has header + 4 session rows", results["csv_lines"] == 5, str(results["csv_lines"]))
+            check("CSV header row", csv_lines[0] == "date,time,minutes,task,note", csv_lines[0] if csv_lines else "empty")
+            check("CSV row carries task B + 25 min",
+                  any("テストタスクB" in l and ",25," in l for l in csv_lines[1:]), str(csv_lines[1:3]))
+            check("CSV row carries the note", any("E2Eテストのメモ" in l for l in csv_lines[1:]), str(csv_lines[1:2]))
+        except Exception as e:  # noqa: BLE001
+            results["csv_error"] = str(e)
+            check("CSV download works", False, str(e)[:120])
 
         # 9. import restores a crafted backup (v2 → v3 migration path)
         today_key = await page.evaluate("dayKey()")
