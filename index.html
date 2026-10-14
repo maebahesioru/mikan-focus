@@ -176,6 +176,34 @@
   .log-empty { font-size: 0.82rem; color: var(--dim); text-align: center; padding: 4px 0; }
   .log-more { margin-top: 10px; }
   .log-more button { padding: 8px 16px; font-size: 0.82rem; }
+  /* セッションメモ (v1.9) */
+  .log-item { flex-wrap: wrap; }
+  .log-note {
+    flex-basis: 100%; font-size: 0.78rem; color: #8a7a4a; font-style: italic;
+    padding-left: 2px; cursor: pointer; word-break: break-word;
+  }
+  .log-note:hover { color: var(--accent2); }
+  .log-note-add {
+    flex-basis: 100%; text-align: left; background: none; border: none; cursor: pointer;
+    color: var(--dim); font-size: 0.76rem; padding: 1px 0 1px 2px;
+  }
+  .log-note-add:hover { color: var(--accent2); text-decoration: underline; }
+  .note-edit { flex-basis: 100%; display: flex; gap: 6px; align-items: center; }
+  .note-edit input {
+    flex: 1; min-width: 0; font-size: 0.8rem; padding: 5px 10px;
+    border: 2px solid #f2e6c8; border-radius: 9px; background: #fffdf6; color: var(--ink);
+  }
+  .note-edit input:focus { outline: none; border-color: var(--accent); }
+  .note-edit button {
+    font-size: 0.75rem; padding: 4px 10px; border-radius: 9px; border: none;
+    cursor: pointer; background: #f2e6c8; color: #8a6d1a; white-space: nowrap;
+  }
+  .note-edit button:hover { background: #ecdcb2; }
+  /* 集中時間プリセット (v1.9) */
+  .preset-row { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .preset-row .preset-label { font-size: 0.78rem; color: #8a6d1a; }
+  .preset-btn { font-size: 0.78rem; padding: 5px 12px; }
+  .preset-btn[aria-pressed="true"] { outline: 2px solid var(--accent2); font-weight: 800; }
   /* 紙吹雪 */
   #confettiCanvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99; }
   footer { text-align: center; color: var(--dim); font-size: 0.8rem; margin: 10px 0 20px; }
@@ -268,6 +296,13 @@
         <label>何回でロング休憩<input type="number" id="cyclesPerLong" min="2" max="8" value="4"></label>
         <label>1日の目標（みかん）<input type="number" id="dailyGoal" min="1" max="20" value="4"></label>
       </div>
+      <div class="preset-row" role="group" aria-label="集中時間プリセット">
+        <span class="preset-label">プリセット:</span>
+        <button type="button" class="btn-sub preset-btn" data-min="15">15分</button>
+        <button type="button" class="btn-sub preset-btn" data-min="25">25分</button>
+        <button type="button" class="btn-sub preset-btn" data-min="45">45分</button>
+        <button type="button" class="btn-sub preset-btn" data-min="60">60分</button>
+      </div>
       <div class="settings-toggles">
         <label><input type="checkbox" id="soundOn" checked> 通知音</label>
         <label><input type="checkbox" id="notifyOn" checked> デスクトップ通知</label>
@@ -296,7 +331,7 @@
     </details>
   </div>
 
-  <footer>みかんフォーカス v1.8 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.9 — Embassy プロジェクト / データはブラウザに保存されます</footer>
 </div>
 <canvas id="confettiCanvas" aria-hidden="true"></canvas>
 
@@ -681,6 +716,7 @@ function complete() {
     setMode(isLong ? 'long' : 'break');
     saveData();
     renderTasks();
+    editingNote = null;
     renderLog();
     drawWeek();
     drawHeat();
@@ -797,6 +833,24 @@ bindNumberInput('breakMin', 'breakMin', 1, 60, 5);
 bindNumberInput('longBreakMin', 'longBreakMin', 1, 90, 15);
 bindNumberInput('cyclesPerLong', 'cyclesPerLong', 2, 8, 4);
 bindNumberInput('dailyGoal', 'dailyGoal', 1, 20, 4);
+
+// ===== v1.9: 集中時間プリセット =====
+const presetBtns = [...document.querySelectorAll('.preset-btn')];
+function updatePresets() {
+  for (const b of presetBtns) {
+    b.setAttribute('aria-pressed', String(parseInt(b.dataset.min, 10) === data.settings.workMin));
+  }
+}
+for (const b of presetBtns) {
+  b.addEventListener('click', () => {
+    const el = document.getElementById('workMin');
+    el.value = b.dataset.min;
+    el.dispatchEvent(new Event('change'));
+    updatePresets();
+  });
+}
+document.getElementById('workMin').addEventListener('change', updatePresets);
+updatePresets();
 
 function bindToggle(id, key) {
   const el = document.getElementById(id);
@@ -1167,6 +1221,7 @@ const logListEl = document.getElementById('logList');
 const logEmptyEl = document.getElementById('logEmpty');
 const logMoreBtn = document.getElementById('logMoreBtn');
 let logShown = 8;
+let editingNote = null; // メモ編集中のエントリ番号 (v1.9)
 
 function fmtWhen(ts) {
   const dt = new Date(ts);
@@ -1179,7 +1234,7 @@ function renderLog() {
   logListEl.innerHTML = '';
   logEmptyEl.style.display = items.length ? 'none' : '';
   const slice = items.slice(0, logShown);
-  for (const h of slice) {
+  slice.forEach((h, i) => {
     const li = document.createElement('li');
     li.className = 'log-item';
     const when = document.createElement('span');
@@ -1192,8 +1247,59 @@ function renderLog() {
     mins.className = 'log-mins';
     mins.textContent = `🍊 +${h.mins}分`;
     li.append(when, name, mins);
+
+    // v1.9: セッションメモ
+    if (editingNote === i) {
+      const box = document.createElement('span');
+      box.className = 'note-edit';
+      const inp = document.createElement('input');
+      inp.id = 'noteInput';
+      inp.type = 'text';
+      inp.maxLength = 120;
+      inp.placeholder = 'この集中、何をした？（ひとこと）';
+      inp.value = h.note || '';
+      inp.setAttribute('aria-label', 'セッションメモ');
+      const save = document.createElement('button');
+      save.id = 'noteSaveBtn';
+      save.type = 'button';
+      save.textContent = '保存';
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.textContent = '✕';
+      cancel.setAttribute('aria-label', 'メモ編集をキャンセル');
+      const commit = () => {
+        const v = inp.value.trim().slice(0, 120);
+        if (v) h.note = v; else delete h.note;
+        saveData();
+        editingNote = null;
+        renderLog();
+      };
+      save.addEventListener('click', commit);
+      cancel.addEventListener('click', () => { editingNote = null; renderLog(); });
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        if (e.key === 'Escape') { editingNote = null; renderLog(); }
+      });
+      box.append(inp, save, cancel);
+      li.appendChild(box);
+      setTimeout(() => inp.focus(), 0);
+    } else if (h.note) {
+      const note = document.createElement('span');
+      note.className = 'log-note';
+      note.textContent = '📝 ' + h.note;
+      note.title = 'クリックで編集';
+      note.addEventListener('click', () => { editingNote = i; renderLog(); });
+      li.appendChild(note);
+    } else {
+      const add = document.createElement('button');
+      add.className = 'log-note-add';
+      add.type = 'button';
+      add.textContent = '＋ メモを追加';
+      add.addEventListener('click', () => { editingNote = i; renderLog(); });
+      li.appendChild(add);
+    }
     logListEl.appendChild(li);
-  }
+  });
   logMoreBtn.hidden = items.length <= logShown;
 }
 
@@ -1214,6 +1320,7 @@ function syncSettingsUI() {
   const volPct = Math.round((data.settings.ambientVol ?? 0.35) * 100);
   document.getElementById('ambientVol').value = volPct;
   document.getElementById('ambientVolLabel').textContent = volPct + '%';
+  updatePresets(); // v1.9
 }
 
 document.getElementById('exportBtn').addEventListener('click', () => {

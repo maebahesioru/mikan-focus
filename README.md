@@ -21,6 +21,8 @@ A tiny pomodoro timer with a pixel-art mikan tree that grows as you complete foc
 - 🌧 Ambient sounds — procedural rain / waves / campfire / brown noise (Web Audio, zero audio files) with a volume slider; plays during focus sessions
 - 🎯 Daily goal — set a mikan target for the day, watch the progress bar fill (streak counter 🔥 included)
 - 📖 Session log — every finished focus session is recorded (time, task, minutes)
+- 📝 Session notes — attach a one-line memo to any session in the log (edit inline, saved with your data, included in backups)
+- ⚡ Focus presets — 15/25/45/60分 quick buttons to set the focus length in one tap
 - 📋 Task list — each focus session adds a 🍊 to the active task (saved locally)
 - 🌳 Pixel-art mikan tree drawn on canvas — 6 growth stages
 - 📊 Stats: sessions today / total / focus minutes + 7-day bar chart (canvas)
@@ -43,7 +45,7 @@ python3 -m http.server 3964
 
 ## Test
 
-E2E suite (Playwright, headless Chromium) — 47 checks covering timer, tasks, chart, persistence, export/import, daily goal + confetti, session log, ambient sound engine, PWA (manifest, service worker, offline reload):
+E2E suite (Playwright, headless Chromium) — 78 checks covering timer, tasks, chart, persistence, export/import, daily goal + confetti, session log, session notes, focus presets, ambient sound engine, PWA (manifest, service worker, offline reload):
 
 ```bash
 uv run --with playwright python tests/e2e.py
@@ -59,6 +61,7 @@ Made for [Hack Club Embassy](https://embassy.hackclub.com/).
 
 ## Changelog
 
+- **v1.9** — セッションメモ + 集中時間プリセット: every session-log entry can carry a one-line note (📝 — add / edit inline, saved with your data and included in backups), and quick preset buttons (15/25/45/60分) set the focus length in one tap; E2E suite extended to 78 checks
 - **v1.8** — セッション延長: a ＋5分 button (and `+` key) extends the current phase by five minutes — the recorded session minutes include the extension; E2E suite extended to 63 checks
 - **v1.7** — 集中モード（Zen mode）: one click (or `Z`) hides the tasks, stats, charts, log and settings so only the timer and the tree stay on screen; `Esc` exits; E2E suite extended to 60 checks
 - **v1.6** — きろくカレンダー: a 15-week focus heatmap (GitHub-contribution style) with per-day color levels, month labels, today outline, and hover details (day → minutes / mikans); E2E suite extended to 54 checks
