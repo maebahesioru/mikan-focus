@@ -159,6 +159,41 @@ async def main():
         results["log_count4"] = await page.locator(".log-item").count()
         check("history has 4 entries", results["log_count4"] == 4, str(results["log_count4"]))
 
+        # 6c. v1.6: focus heatmap (15-week calendar)
+        hpx = await page.evaluate(
+            """() => { const c=document.getElementById('heatCanvas');
+                 const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
+                 let n=0; for(let i=3;i<d.length;i+=4){ if(d[i]>0) n++; } return n; }"""
+        )
+        results["heat_pixels"] = hpx
+        check("heatmap painted", hpx > 5000, str(hpx))
+        results["heat_cells"] = await page.evaluate("heatCells().length")
+        check("heatmap covers ~105 days", 100 <= results["heat_cells"] <= 105, str(results["heat_cells"]))
+        last_key = await page.evaluate("heatCells().slice(-1)[0].key")
+        today_key = await page.evaluate("dayKey()")
+        check("heatmap last cell = today", last_key == today_key, f"{last_key} vs {today_key}")
+        today_min = await page.evaluate(
+            "heatCells().find(c => c.key === dayKey()).minutes"
+        )
+        check("today cell = 100 min (4 sessions)", today_min == 100, str(today_min))
+        results["heat_caption"] = await page.text_content("#heatCaption")
+        check("heat caption shows summary", "15週間の合計" in results["heat_caption"], results["heat_caption"])
+        # hover: scroll into view, hover a cell -> day detail; leave -> summary back
+        await page.evaluate("document.getElementById('heatCanvas').scrollIntoView({block:'center'})")
+        await page.wait_for_timeout(300)
+        hbox = await page.locator("#heatCanvas").bounding_box()
+        hsx = hbox["width"] / 440
+        hsy = hbox["height"] / 212
+        # cell (col 2, row 3) center in canvas coords: (30+2*24+10, 24+3*24+10) = (88, 106)
+        await page.mouse.move(hbox["x"] + 88 * hsx, hbox["y"] + 106 * hsy)
+        await page.wait_for_timeout(300)
+        results["heat_hover"] = await page.text_content("#heatCaption")
+        check("heatmap hover shows a day", "分 / みかん" in (results["heat_hover"] or ""), results["heat_hover"])
+        await page.mouse.move(hbox["x"] - 120, hbox["y"] - 120)
+        await page.wait_for_timeout(300)
+        results["heat_hover_out"] = await page.text_content("#heatCaption")
+        check("heatmap hover-out restores summary", "15週間の合計" in (results["heat_hover_out"] or ""), results["heat_hover_out"])
+
         # 7. persistence across reload
         await page.reload()
         await page.wait_for_timeout(400)
@@ -255,13 +290,14 @@ async def main():
             results["sw_state"] = sw_state
             check("service worker active", sw_state == "active", str(sw_state))
 
-            # cache populated with app shell
+            # cache populated with app shell (version-agnostic: newest mikan-focus-* cache)
             cache_info = await page2.evaluate(
                 """async () => {
                      const keys = await caches.keys();
-                     const c = await caches.open('mikan-focus-v1.5');
-                     const hit = await c.match('./index.html');
-                     return {keys, indexCached: !!hit};
+                     const key = keys.filter((k) => k.startsWith('mikan-focus-')).sort().pop();
+                     const c = key ? await caches.open(key) : null;
+                     const hit = c ? await c.match('./index.html') : null;
+                     return {keys, key, indexCached: !!hit};
                    }"""
             )
             results["cache_keys"] = cache_info["keys"]
