@@ -1,6 +1,6 @@
 // Mikan Focus service worker — app-shell cache for offline use.
-// v1.11: cache-first with network fallback; stale caches pruned on activate.
-const CACHE = 'mikan-focus-v1.11';
+// v1.12: cache-first with network fallback; stale caches pruned on activate.
+const CACHE = 'mikan-focus-v1.12';
 const ASSETS = [
   './',
   './index.html',

@@ -18,14 +18,16 @@ A tiny pomodoro timer with a pixel-art mikan tree that grows as you complete foc
 ## Features
 
 - 🍅 Pomodoro timer (work/break/long-break, lengths configurable, 4-cycle long break)
+- ⏱ Sticky timer — the running (or paused) phase is saved, so a reload or a closed tab resumes exactly where it left off; a phase that finished while you were away completes on load
 - 🌧 Ambient sounds — procedural rain / waves / campfire / brown noise (Web Audio, zero audio files) with a volume slider; plays during focus sessions
 - 🎯 Daily goal — set a mikan target for the day, watch the progress bar fill (streak counter 🔥 included)
 - 📖 Session log — every finished focus session is recorded (time, task, minutes)
 - 📝 Session notes — attach a one-line memo to any session in the log (edit inline, saved with your data, included in backups)
 - 🏅 Achievement badges — 14 badges to collect (sessions, total minutes, streaks, tree growth, daily goal, memos, night/morning focus); locked ones show live progress, and unlocking pops a toast; saved with your data
 - ⚡ Focus presets — 15/25/45/60分 quick buttons to set the focus length in one tap
-- 📋 Task list — each focus session adds a 🍊 to the active task (saved locally)
+- 📋 Task list — each focus session adds a 🍊 to the active task (saved locally); rename any task in place with ✎
 - 🌳 Pixel-art mikan tree drawn on canvas — 6 growth stages
+- 🎨 Theme — light / dark / auto (follows your OS), remembered with your data
 - 📊 Stats: sessions today / total / focus minutes + 7-day bar chart (canvas)
 - 💾 Backup export / import (JSON) — your data stays yours
 - 📊 CSV export — write the whole session log (date, time, minutes, task, note) out as a spreadsheet-friendly CSV (BOM, Excel-safe)
@@ -47,7 +49,7 @@ python3 -m http.server 3964
 
 ## Test
 
-E2E suite (Playwright, headless Chromium) — 99 checks covering timer, tasks, chart, persistence, export/import, daily goal + confetti, session log, session notes, focus presets, achievement badges (grid, unlocks, toasts, persistence, import recompute), CSV session-log export, ambient sound engine, PWA (manifest, service worker, offline reload):
+E2E suite (Playwright, headless Chromium) — 129 checks covering timer, tasks (incl. rename), chart, persistence, export/import, daily goal + confetti, session log, session notes, focus presets, achievement badges (grid, unlocks, toasts, persistence, import recompute), CSV session-log export, ambient sound engine (incl. 0% = silent), dark theme (apply / persist / theme-color), timer-state persistence (running & paused resume across reload, away-finished session completes on load), PWA (manifest, service worker, offline reload):
 
 ```bash
 uv run --with playwright python tests/e2e.py
@@ -63,6 +65,7 @@ Made for [Hack Club Embassy](https://embassy.hackclub.com/).
 
 ## Changelog
 
+- **v1.12** — タイマー復元 + タスク名変更 + ダークテーマ: the running (or paused) timer now survives a reload — it resumes where it left off, and a phase that finished while you were away completes on load (mikan awarded); tasks can be renamed in place with the ✎ button; a theme picker adds light / dark / auto (follows your OS); two fixes — countdown seconds no longer drift over long sessions, and the ambient volume slider at 0% is truly silent (it used to keep playing at 1%); E2E suite extended to 129 checks
 - **v1.11** — きろくCSV書き出し: export the full session log as a CSV (date / time / minutes / task / note — BOM'd for Excel, quotes escaped), straight from the settings panel; E2E suite extended to 99 checks
 - **v1.10** — 実績バッジ: 14 collectible badges (first mikan / 10 / 50 / 100 sessions, 500 / 1000 total minutes, 3 / 7-day streaks, tree bloom + full bloom, daily goal, first memo, night owl + early bird) derived from your stats with live progress on locked ones and a toast when one unlocks; persisted in your data and recomputed on import; E2E suite extended to 94 checks
 - **v1.9** — セッションメモ + 集中時間プリセット: every session-log entry can carry a one-line note (📝 — add / edit inline, saved with your data and included in backups), and quick preset buttons (15/25/45/60分) set the focus length in one tap; E2E suite extended to 78 checks

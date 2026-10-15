@@ -230,6 +230,46 @@
   @keyframes toastIn { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
   /* 紙吹雪 */
   #confettiCanvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99; }
+  /* ダークテーマ (v1.12) */
+  body.dark { --card: #2a251b; --ink: #f4ead0; --dim: #9a8c66; background: linear-gradient(170deg, #1d1a12 0%, #2a2417 100%); }
+  body.dark .card, body.dark .stat { box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35); }
+  body.dark .mode-label { background: #4a3d1a; color: #ffd98a; }
+  body.dark .mode-label.break { background: #2f4220; color: #c8e6a0; }
+  body.dark .mode-label.long { background: #24384a; color: #a8cce8; }
+  body.dark .btn-sub { background: #3a3320; color: #e8d9a8; }
+  body.dark .btn-sub:hover { background: #463d26; }
+  body.dark .settings-toggles select, body.dark .settings-grid input,
+  body.dark .task-add input[type=text], body.dark .note-edit input { background: #332c1f; color: #f4ead0; border-color: #4a4128; }
+  body.dark .task-item, body.dark .log-item, body.dark .badge-item { background: #332c1f; border-color: #4a4128; }
+  body.dark .task-item.active { background: #3d3420; border-color: var(--accent); }
+  body.dark .badge-item.unlocked { background: #3d3420; }
+  body.dark .badge-item .b-name { color: #cbb277; }
+  body.dark .badge-item.unlocked .b-name { color: var(--accent); }
+  body.dark .tree-title, body.dark .task-title, body.dark .goal-label, body.dark .settings-grid label,
+  body.dark .settings-toggles label, body.dark .preset-row .preset-label { color: #e5c98a; }
+  body.dark .progress-track, body.dark .goal-bar, body.dark .dot { background: #3a3320; }
+  body.dark .dot { border-color: #4a4128; }
+  body.dark .log-note { color: #c9b98a; }
+  body.dark .log-name.none { color: #9a8c66; }
+  /* タスク名変更 (v1.12) */
+  .t-edit {
+    border: none; background: none; cursor: pointer; font-size: 0.9rem; color: var(--dim);
+    padding: 4px 6px; border-radius: 8px; line-height: 1;
+  }
+  .t-edit:hover { background: #f2e6c8; color: #8a6d1a; }
+  body.dark .t-edit:hover { background: #3a3320; color: #e8d9a8; }
+  .rename-edit { flex: 1; display: flex; gap: 6px; align-items: center; min-width: 0; }
+  .rename-edit input {
+    flex: 1; min-width: 0; font-family: inherit; font-size: 0.85rem; padding: 5px 10px;
+    border: 2px solid var(--accent); border-radius: 9px; background: #fffdf6; color: var(--ink);
+  }
+  body.dark .rename-edit input { background: #332c1f; color: #f4ead0; }
+  .rename-edit button {
+    font-size: 0.75rem; padding: 4px 10px; border-radius: 9px; border: none;
+    cursor: pointer; background: #f2e6c8; color: #8a6d1a; white-space: nowrap;
+  }
+  .rename-edit button:hover { background: #ecdcb2; }
+  body.dark .rename-edit button { background: #3a3320; color: #e8d9a8; }
   footer { text-align: center; color: var(--dim); font-size: 0.8rem; margin: 10px 0 20px; }
 </style>
 </head>
@@ -339,6 +379,15 @@
         <label><input type="checkbox" id="autoStartNext"> 次のフェーズを自動開始</label>
       </div>
       <div class="settings-toggles">
+        <label>🎨 テーマ
+          <select id="themeSel">
+            <option value="light">ライト</option>
+            <option value="dark">ダーク</option>
+            <option value="auto">自動（OS設定に合わせる）</option>
+          </select>
+        </label>
+      </div>
+      <div class="settings-toggles">
         <label>🌧 環境音
           <select id="ambientSel">
             <option value="off">なし</option>
@@ -362,7 +411,7 @@
     </details>
   </div>
 
-  <footer>みかんフォーカス v1.11 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.12 — Embassy プロジェクト / データはブラウザに保存されます</footer>
 </div>
 <div id="badgeToastWrap" aria-live="polite"></div>
 <canvas id="confettiCanvas" aria-hidden="true"></canvas>
@@ -374,7 +423,7 @@ const BASE_TITLE = 'みかんフォーカス - Mikan Focus';
 const DEFAULT_SETTINGS = {
   workMin: 25, breakMin: 5, longBreakMin: 15, cyclesPerLong: 4,
   soundOn: true, notifyOn: true, autoStartNext: false, dailyGoal: 4,
-  ambient: 'off', ambientVol: 0.35,
+  ambient: 'off', ambientVol: 0.35, theme: 'light',
 };
 const HISTORY_MAX = 300;
 
@@ -400,6 +449,7 @@ function loadData() {
     goalCelebrated: raw.goalCelebrated || '',
     treeCelebrated: !!raw.treeCelebrated,
     badges: Array.isArray(raw.badges) ? raw.badges.filter(x => typeof x === 'string') : [],
+    timer: (raw.timer && typeof raw.timer === 'object') ? raw.timer : null,
   };
   if (!raw.v) {
     // v1 → v2/v3 移行
@@ -444,6 +494,15 @@ function setMode(mode) {
   state.remain = state.totalSec;
 }
 
+// v1.12: タイマー状態を保存（リロード・タブ復帰でも続きから）
+function persistTimer() {
+  data.timer = {
+    mode: state.mode, remain: state.remain, totalSec: state.totalSec,
+    running: state.running, at: Date.now(),
+  };
+  saveData();
+}
+
 // ===== UI参照 =====
 const timeDisplay = document.getElementById('timeDisplay');
 const modeLabel = document.getElementById('modeLabel');
@@ -485,6 +544,7 @@ function render() {
   renderStats();
   renderGoal();
   updateTitle();
+  persistTimer(); // v1.12
 }
 
 function renderDots() {
@@ -736,6 +796,7 @@ function stopAmbient() {
 }
 
 function ambientBlip(freq, dur, vol) {
+  if (!(vol > 0)) return; // v1.12 fix: 音量0%で例外を出さない
   const ctx = audioCtx;
   const osc = ctx.createOscillator();
   const g = ctx.createGain();
@@ -760,8 +821,8 @@ function startAmbient(type) {
     src.loop = true;
     const filter = ctx.createBiquadFilter();
     const gain = ctx.createGain();
-    const vol = Math.max(0.01, data.settings.ambientVol);
-    gain.gain.value = 0.0001;
+    const vol = Math.max(0, data.settings.ambientVol); // v1.12 fix: 0%は無音（以前は1%で鳴り続けた）
+    gain.gain.value = vol > 0 ? 0.0001 : 0;
 
     if (type === 'rain') { filter.type = 'highpass'; filter.frequency.value = 450; filter.Q.value = 0.6; }
     else if (type === 'waves') { filter.type = 'lowpass'; filter.frequency.value = 480; }
@@ -770,7 +831,7 @@ function startAmbient(type) {
 
     src.connect(filter).connect(gain).connect(ctx.destination);
     src.start();
-    gain.gain.exponentialRampToValueAtTime(vol, ctx.currentTime + 1.4);
+    if (vol > 0) gain.gain.exponentialRampToValueAtTime(vol, ctx.currentTime + 1.4);
     ambient = { src, gain, filter, lfo: null, blipTimer: null, type };
 
     if (type === 'waves') {
@@ -798,7 +859,7 @@ function startAmbient(type) {
 
 function ambientVolume(v) {
   if (!ambient) return;
-  const vol = Math.max(0.01, v);
+  const vol = Math.max(0, v); // v1.12 fix: 0%スライダーで無音にする（以前は最小1%）
   try { ambient.gain.gain.setTargetAtTime(vol, audioCtx.currentTime, 0.15); } catch {}
   if (ambient.lfoGain) { try { ambient.lfoGain.gain.setTargetAtTime(vol * 0.55, audioCtx.currentTime, 0.15); } catch {} }
 }
@@ -808,7 +869,7 @@ function tick() {
   const now = Date.now();
   const elapsed = Math.floor((now - state.lastTick) / 1000);
   if (elapsed <= 0) return;
-  state.lastTick = now;
+  state.lastTick += elapsed * 1000; // v1.12 fix: 端数を落とさない（長時間で数秒ズレる問題）
   state.remain -= elapsed;
   if (state.remain <= 0) {
     state.remain = 0;
@@ -1018,6 +1079,27 @@ ambientVol.addEventListener('input', () => {
   ambientVolume(v / 100);
 });
 
+// ===== v1.12: テーマ（ライト / ダーク / 自動） =====
+const themeSel = document.getElementById('themeSel');
+const darkMedia = window.matchMedia('(prefers-color-scheme: dark)');
+function applyTheme() {
+  const t = data.settings.theme || 'light';
+  const dark = t === 'dark' || (t === 'auto' && darkMedia.matches);
+  document.body.classList.toggle('dark', dark);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', dark ? '#1d1a12' : '#f5a623');
+}
+themeSel.addEventListener('change', () => {
+  data.settings.theme = themeSel.value;
+  saveData();
+  applyTheme();
+});
+if (darkMedia.addEventListener) {
+  darkMedia.addEventListener('change', () => {
+    if ((data.settings.theme || 'light') === 'auto') applyTheme();
+  });
+}
+
 // ===== みかんの木（ピクセルアート風canvas描画） =====
 const treeCanvas = document.getElementById('treeCanvas');
 const tctx = treeCanvas.getContext('2d');
@@ -1139,6 +1221,7 @@ const taskListEl = document.getElementById('taskList');
 const taskInput = document.getElementById('taskInput');
 const taskEmptyEl = document.getElementById('taskEmpty');
 const activeTaskLine = document.getElementById('activeTaskLine');
+let editingTask = null; // v1.12: 名前変更中のタスクid
 
 function activeTask() {
   return data.tasks.find(t => t.id === data.activeTaskId) || null;
@@ -1150,19 +1233,61 @@ function renderTasks() {
   for (const task of data.tasks) {
     const li = document.createElement('li');
     li.className = 'task-item' + (task.id === data.activeTaskId ? ' active' : '');
-    const name = document.createElement('span');
-    name.className = 't-name';
-    name.textContent = (task.id === data.activeTaskId ? '🍊 ' : '') + task.name;
     const pomos = document.createElement('span');
     pomos.className = 't-pomos';
     pomos.textContent = '🍊×' + (task.pomos || 0);
-    const del = document.createElement('button');
-    del.className = 't-del';
-    del.type = 'button';
-    del.textContent = '✕';
-    del.title = 'このタスクを削除';
-    del.addEventListener('click', (e) => { e.stopPropagation(); deleteTask(task.id); });
-    li.append(name, pomos, del);
+    if (editingTask === task.id) {
+      // v1.12: タスク名の変更（インライン編集）
+      const box = document.createElement('span');
+      box.className = 'rename-edit';
+      const inp = document.createElement('input');
+      inp.id = 'renameInput';
+      inp.type = 'text';
+      inp.maxLength = 60;
+      inp.value = task.name;
+      inp.setAttribute('aria-label', 'タスク名を変更');
+      const save = document.createElement('button');
+      save.id = 'renameSaveBtn';
+      save.type = 'button';
+      save.textContent = '保存';
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.textContent = '✕';
+      cancel.setAttribute('aria-label', '名前変更をキャンセル');
+      const commit = () => {
+        const v = inp.value.trim().slice(0, 60);
+        if (v) { task.name = v; saveData(); }
+        editingTask = null;
+        renderTasks();
+      };
+      save.addEventListener('click', (e) => { e.stopPropagation(); commit(); });
+      cancel.addEventListener('click', (e) => { e.stopPropagation(); editingTask = null; renderTasks(); });
+      inp.addEventListener('click', (e) => e.stopPropagation());
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        if (e.key === 'Escape') { editingTask = null; renderTasks(); }
+      });
+      box.append(inp, save, cancel);
+      li.append(box, pomos);
+      setTimeout(() => inp.focus(), 0);
+    } else {
+      const name = document.createElement('span');
+      name.className = 't-name';
+      name.textContent = (task.id === data.activeTaskId ? '🍊 ' : '') + task.name;
+      const edit = document.createElement('button');
+      edit.className = 't-edit';
+      edit.type = 'button';
+      edit.textContent = '✎';
+      edit.title = 'このタスクの名前を変更';
+      edit.addEventListener('click', (e) => { e.stopPropagation(); editingTask = task.id; renderTasks(); });
+      const del = document.createElement('button');
+      del.className = 't-del';
+      del.type = 'button';
+      del.textContent = '✕';
+      del.title = 'このタスクを削除';
+      del.addEventListener('click', (e) => { e.stopPropagation(); deleteTask(task.id); });
+      li.append(name, pomos, edit, del);
+    }
     li.addEventListener('click', () => selectTask(task.id));
     taskListEl.appendChild(li);
   }
@@ -1192,6 +1317,7 @@ function selectTask(id) {
 function deleteTask(id) {
   data.tasks = data.tasks.filter(t => t.id !== id);
   if (data.activeTaskId === id) data.activeTaskId = null;
+  if (editingTask === id) editingTask = null; // v1.12
   saveData();
   renderTasks();
 }
@@ -1454,6 +1580,7 @@ function syncSettingsUI() {
   document.getElementById('soundOn').checked = !!data.settings.soundOn;
   document.getElementById('notifyOn').checked = !!data.settings.notifyOn;
   document.getElementById('autoStartNext').checked = !!data.settings.autoStartNext;
+  document.getElementById('themeSel').value = data.settings.theme || 'light'; // v1.12
   document.getElementById('ambientSel').value = data.settings.ambient || 'off';
   const volPct = Math.round((data.settings.ambientVol ?? 0.35) * 100);
   document.getElementById('ambientVol').value = volPct;
@@ -1523,12 +1650,14 @@ importFile.addEventListener('change', () => {
         goalCelebrated: imported.goalCelebrated || '',
         treeCelebrated: !!imported.treeCelebrated,
         badges: Array.isArray(imported.badges) ? imported.badges.filter(x => typeof x === 'string') : [],
+        timer: null, // v1.12: 取り込み後は以前のタイマー状態を持ち越さない
       };
       saveData();
       stopTimer();
       setMode('work');
       syncSettingsUI();
       logShown = 8;
+      editingTask = null; // v1.12
       checkBadges(true);
       render();
       renderTasks();
@@ -1569,8 +1698,35 @@ if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
   });
 }
 
+// ===== v1.12: タイマー復元（リロードしても続きから） =====
+function restoreTimer() {
+  const t = data.timer;
+  if (!t) { setMode('work'); return; }
+  const mode = ['work', 'break', 'long'].includes(t.mode) ? t.mode : 'work';
+  state.mode = mode;
+  const total = Number(t.totalSec);
+  state.totalSec = Number.isFinite(total) && total > 0 ? total : phaseSec(mode);
+  const remain = Math.max(0, Number(t.remain) || 0);
+  if (t.running) {
+    // 実行中だった → 離れていた時間ぶん進めて再開（見ていない間に終わっていたら完了処理）
+    const away = Math.max(0, Math.floor((Date.now() - (Number(t.at) || Date.now())) / 1000));
+    const left = remain - away;
+    if (left <= 0) {
+      state.remain = 0;
+      complete();
+      return;
+    }
+    state.remain = left;
+    startTimer();
+    return;
+  }
+  state.remain = remain <= 0 ? state.totalSec : Math.min(remain, state.totalSec);
+}
+
 // ===== 初期化 =====
-setMode('work');
+restoreTimer();
+syncSettingsUI();
+applyTheme();
 render();
 renderTasks();
 renderLog();

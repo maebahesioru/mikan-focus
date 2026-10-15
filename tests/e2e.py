@@ -8,8 +8,11 @@ Covers: timer start/pause/tick, work-session completion (stats/growth/task pomo)
 task list CRUD + persistence, week chart pixels, export download, import restore,
 reload persistence, zero JS errors, achievement badges (v1.10: grid, unlock on
 session / goal / memo, toasts, persistence, import recompute), CSV session-log
-export (v1.11). Plus PWA phase (HTTP-served): manifest, service worker
-registration, cache population, offline reload, install button.
+export (v1.11), v1.12: task rename (✎ inline edit), dark theme (apply / persist /
+theme-color), ambient volume 0% = silent, timer state persistence (running &
+paused resume across reload, away-finished session completes on load).
+Plus PWA phase (HTTP-served): manifest, service worker registration, cache
+population, offline reload, install button.
 """
 import asyncio
 import functools
@@ -79,6 +82,31 @@ async def main():
         results["active_line2"] = await page.text_content("#activeTaskLine")
         check("switch to task B", "テストタスクB" in results["active_line2"], results["active_line2"])
 
+        # 3b. v1.12: task rename (✎ inline edit)
+        results["t_edit_btns"] = await page.locator(".t-edit").count()
+        check("each task has a rename button", results["t_edit_btns"] == 2, str(results["t_edit_btns"]))
+        await page.locator(".task-item").nth(0).locator(".t-edit").click()
+        await page.wait_for_timeout(250)
+        check("rename editor opens", await page.locator("#renameInput").count() == 1)
+        results["rename_prefill"] = await page.input_value("#renameInput")
+        check("rename field prefilled", results["rename_prefill"] == "テストタスクA", results["rename_prefill"])
+        await page.fill("#renameInput", "やめとく")
+        await page.press("#renameInput", "Escape")
+        await page.wait_for_timeout(250)
+        results["rename_cancel"] = await page.evaluate("data.tasks[0].name")
+        check("Escape cancels rename", results["rename_cancel"] == "テストタスクA", results["rename_cancel"])
+        await page.locator(".task-item").nth(0).locator(".t-edit").click()
+        await page.wait_for_timeout(250)
+        await page.fill("#renameInput", "テストタスクA改")
+        await page.press("#renameInput", "Enter")
+        await page.wait_for_timeout(250)
+        results["rename_saved"] = await page.evaluate("data.tasks[0].name")
+        check("Enter saves the new task name", results["rename_saved"] == "テストタスクA改", results["rename_saved"])
+        results["rename_rendered"] = await page.locator(".task-item").nth(0).text_content()
+        check("renamed task rendered in list", "テストタスクA改" in results["rename_rendered"], results["rename_rendered"])
+        results["rename_active_kept"] = await page.text_content("#activeTaskLine")
+        check("rename does not change active task", "テストタスクB" in results["rename_active_kept"], results["rename_active_kept"])
+
         # 4. timer runs and counts down
         await page.click("#startBtn")
         await page.wait_for_timeout(2600)
@@ -108,6 +136,44 @@ async def main():
         await page.click("#startBtn")  # pause -> ambient stops
         results["ambient_stopped"] = await page.evaluate("ambient === null")
         check("ambient stops on pause", results["ambient_stopped"] is True)
+
+        # 4c. v1.12 fix: volume slider 0% = truly silent (was clamped to 1%)
+        await page.locator("#ambientVol").fill("0")
+        await page.wait_for_timeout(200)
+        results["ambient_vol0"] = await page.evaluate("data.settings.ambientVol")
+        check("volume 0% saved as 0", results["ambient_vol0"] == 0, str(results["ambient_vol0"]))
+        await page.click("#startBtn")  # start work -> ambient at 0%
+        await page.wait_for_timeout(800)  # rain blips fire (every 170ms) — must not throw
+        results["ambient_gain0"] = await page.evaluate("ambient ? ambient.gain.gain.value : -1")
+        check("ambient is silent at 0%", results["ambient_gain0"] == 0, str(results["ambient_gain0"]))
+        await page.click("#startBtn")  # pause
+        await page.wait_for_timeout(200)
+
+        # 4d. v1.12: dark theme (light / dark / auto)
+        results["theme_default"] = await page.evaluate("data.settings.theme")
+        check("theme defaults to light", results["theme_default"] == "light", str(results["theme_default"]))
+        results["bg_light"] = await page.evaluate(
+            "getComputedStyle(document.querySelector('.card')).backgroundColor")
+        await page.select_option("#themeSel", "dark")
+        await page.wait_for_timeout(250)
+        results["dark_class"] = await page.evaluate("document.body.classList.contains('dark')")
+        check("dark theme applies body class", results["dark_class"] is True)
+        results["bg_dark"] = await page.evaluate(
+            "getComputedStyle(document.querySelector('.card')).backgroundColor")
+        check("dark theme changes surfaces", results["bg_light"] != results["bg_dark"],
+              f"{results['bg_light']} vs {results['bg_dark']}")
+        results["meta_theme_dark"] = await page.get_attribute("meta[name='theme-color']", "content")
+        check("theme-color meta switches to dark", results["meta_theme_dark"] == "#1d1a12",
+              str(results["meta_theme_dark"]))
+        results["theme_saved"] = await page.evaluate("data.settings.theme")
+        check("theme persisted in data", results["theme_saved"] == "dark", str(results["theme_saved"]))
+        await page.select_option("#themeSel", "light")
+        await page.wait_for_timeout(250)
+        results["dark_off"] = await page.evaluate("!document.body.classList.contains('dark')")
+        check("back to light removes dark class", results["dark_off"] is True)
+        results["meta_theme_light"] = await page.get_attribute("meta[name='theme-color']", "content")
+        check("theme-color meta back to light", results["meta_theme_light"] == "#f5a623",
+              str(results["meta_theme_light"]))
 
         # 5. complete a work session (fast-forward via script scope)
         await page.evaluate("state.remain = 2; state.lastTick = Date.now() - 3000; tick();")
@@ -328,6 +394,8 @@ async def main():
         check("badges persisted after reload (4)", results["badges_reload"] == 4, str(results["badges_reload"]))
         results["badge_count_reload"] = await page.text_content("#badgeCount")
         check("badge counter persisted 4/14", results["badge_count_reload"] == "たっせい 4/14", results["badge_count_reload"])
+        results["rename_reload"] = await page.locator(".task-item").nth(0).text_content()
+        check("renamed task persisted after reload", "テストタスクA改" in results["rename_reload"], results["rename_reload"])
 
         # 8. export download (settings <details> must be open first)
         await page.evaluate("document.querySelector('.settings details').open = true")
@@ -410,6 +478,65 @@ async def main():
         await page.click("#resetBtn")
         results["time_after_reset"] = await page.text_content("#timeDisplay")
         check("reset -> 50:00 (imported workMin)", results["time_after_reset"] == "50:00", results["time_after_reset"])
+
+        # 11. v1.12: timer state persistence (reload resumes the session)
+        await page.click("#startBtn")
+        await page.wait_for_timeout(1300)
+        results["run_before_reload"] = await page.evaluate("state.running")
+        r_before = await page.evaluate("state.remain")
+        check("timer running before reload", results["run_before_reload"] is True)
+        await page.reload()
+        await page.wait_for_timeout(500)
+        results["run_after_reload"] = await page.evaluate("state.running")
+        check("timer still running after reload", results["run_after_reload"] is True)
+        r_after = await page.evaluate("state.remain")
+        results["remain_continuity"] = [r_before, r_after]
+        check("remaining time continued (no reset to 50:00)",
+              r_after <= r_before and r_after >= r_before - 4, f"{r_before} -> {r_after}")
+        results["btn_after_reload"] = await page.text_content("#startBtn")
+        check("start button shows 一時停止 after resume", results["btn_after_reload"] == "一時停止",
+              results["btn_after_reload"])
+        # paused state also survives a reload
+        await page.click("#startBtn")
+        await page.wait_for_timeout(300)
+        r_paused = await page.evaluate("state.remain")
+        await page.reload()
+        await page.wait_for_timeout(500)
+        results["run_after_pause_reload"] = await page.evaluate("state.running")
+        r_after_pause = await page.evaluate("state.remain")
+        check("paused state stays paused after reload", results["run_after_pause_reload"] is False)
+        check("paused remaining time kept", r_after_pause == r_paused, f"{r_paused} -> {r_after_pause}")
+        results["paused_btn"] = await page.text_content("#startBtn")
+        check("start button shows つづける when restored paused", results["paused_btn"] == "つづける",
+              results["paused_btn"])
+        # 11b. phase that finished while away is completed on load (mikan awarded)
+        await page.evaluate(
+            "data.timer = { mode: 'work', remain: 1, totalSec: 1500, running: true, at: Date.now() - 6000 };"
+            " saveData();"
+        )
+        await page.reload()
+        await page.wait_for_timeout(600)
+        results["away_stat"] = await page.text_content("#statTotal")
+        check("away-finished session awarded (12 -> 13)", results["away_stat"] == "13", results["away_stat"])
+        results["away_mode"] = await page.evaluate("state.mode")
+        check("phase advanced after away-complete (cycle 4 -> long break)", results["away_mode"] == "long",
+              results["away_mode"])
+        results["away_log"] = await page.locator(".log-item").nth(0).text_content()
+        check("log entry for away-completed session", "復元タスク" in results["away_log"] and "+25分" in results["away_log"],
+              results["away_log"])
+        results["away_goal"] = await page.text_content("#goalCount")
+        check("away-complete counted toward the daily goal (4/4)", results["away_goal"] == "4/4", results["away_goal"])
+        # 11c. theme choice persists across reload
+        await page.evaluate("document.querySelector('.settings details').open = true")
+        await page.select_option("#themeSel", "dark")
+        await page.wait_for_timeout(200)
+        await page.reload()
+        await page.wait_for_timeout(500)
+        results["dark_reload"] = await page.evaluate("document.body.classList.contains('dark')")
+        check("dark theme persisted after reload", results["dark_reload"] is True)
+        results["dark_reload_bg"] = await page.evaluate(
+            "getComputedStyle(document.querySelector('.card')).backgroundColor")
+        check("dark surface applied on load", results["dark_reload_bg"] == "rgb(42, 37, 27)", results["dark_reload_bg"])
 
         results["js_errors"] = errors
         check("no JS errors", len(errors) == 0, "; ".join(errors[:3]))
