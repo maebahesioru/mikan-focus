@@ -23,6 +23,9 @@ A tiny pomodoro timer with a pixel-art mikan tree that grows as you complete foc
 - 🎯 Daily goal — set a mikan target for the day, watch the progress bar fill (streak counter 🔥 included)
 - 📖 Session log — every finished focus session is recorded (time, task, minutes)
 - 📝 Session notes — attach a one-line memo to any session in the log (edit inline, saved with your data, included in backups)
+- 🔍 Log filter — narrow the session log down to a single task (or「タスクなし」) with the dropdown in the log card
+- 📷 Tree PNG export — save your mikan tree as a 2x pixel-perfect PNG (caption: total sessions / today's mikans / date)
+- ⌨️ Shortcut help — press `?` (or the ⌨ button) for an overlay of every keyboard shortcut; `Esc` / backdrop / とじる closes it
 - 🏅 Achievement badges — 14 badges to collect (sessions, total minutes, streaks, tree growth, daily goal, memos, night/morning focus); locked ones show live progress, and unlocking pops a toast; saved with your data
 - ⚡ Focus presets — 15/25/45/60分 quick buttons to set the focus length in one tap
 - 📋 Task list — each focus session adds a 🍊 to the active task (saved locally); rename any task in place with ✎
@@ -34,7 +37,7 @@ A tiny pomodoro timer with a pixel-art mikan tree that grows as you complete foc
 - 🔔 Chime (Web Audio, no files) + desktop notifications
 - 🎉 Pixel confetti when you hit your daily goal or the tree is fully grown
 - 📲 PWA: installable (own icon + manifest) and works fully offline via a service worker
-- ⌨️ Keyboard shortcuts: Space = start/pause, R = reset, S = skip
+- ⌨️ Keyboard shortcuts: Space = start/pause, R = reset, S = skip, Z = zen mode, ＋ = extend 5min, ? = shortcut help
 - ♿ Accessibility: `role="timer"`, `aria-live` mode/stage announcements
 - 📱 Responsive, works offline
 - 📄 Single HTML file — no build, no dependencies
@@ -49,7 +52,7 @@ python3 -m http.server 3964
 
 ## Test
 
-E2E suite (Playwright, headless Chromium) — 129 checks covering timer, tasks (incl. rename), chart, persistence, export/import, daily goal + confetti, session log, session notes, focus presets, achievement badges (grid, unlocks, toasts, persistence, import recompute), CSV session-log export, ambient sound engine (incl. 0% = silent), dark theme (apply / persist / theme-color), timer-state persistence (running & paused resume across reload, away-finished session completes on load), PWA (manifest, service worker, offline reload):
+E2E suite (Playwright, headless Chromium) — 148 checks covering timer, tasks (incl. rename), chart, persistence, export/import, daily goal + confetti, session log, session notes, focus presets, achievement badges (grid, unlocks, toasts, persistence, import recompute), CSV session-log export, ambient sound engine (incl. 0% = silent), dark theme (apply / persist / theme-color), timer-state persistence (running & paused resume across reload, away-finished session completes on load), shortcut help overlay (? key / button / Esc / input guard), log filter by task (options, per-task, no-task, empty hint), tree PNG export (download / signature / dimensions), PWA (manifest, service worker, offline reload):
 
 ```bash
 uv run --with playwright python tests/e2e.py
@@ -65,6 +68,7 @@ Made for [Hack Club Embassy](https://embassy.hackclub.com/).
 
 ## Changelog
 
+- **v1.13** — きろくフィルタ + ショートカットヘルプ + 木のPNG保存: the session log can be filtered down to a single task (or「タスクなし」) from a dropdown (options track your tasks + history, with a hint when a task has no sessions yet); press `?` or the ⌨ button for a keyboard-shortcut help overlay (closed by `Esc`, a backdrop click, or とじる); the mikan tree can be saved as a 2x pixel-perfect PNG with a caption (total sessions / today's mikans / date); test suite hardened — the 朝/深夜 badges depend on the wall-clock hour, so the E2E expectations now account for it; E2E suite extended to 148 checks
 - **v1.12** — タイマー復元 + タスク名変更 + ダークテーマ: the running (or paused) timer now survives a reload — it resumes where it left off, and a phase that finished while you were away completes on load (mikan awarded); tasks can be renamed in place with the ✎ button; a theme picker adds light / dark / auto (follows your OS); two fixes — countdown seconds no longer drift over long sessions, and the ambient volume slider at 0% is truly silent (it used to keep playing at 1%); E2E suite extended to 129 checks
 - **v1.11** — きろくCSV書き出し: export the full session log as a CSV (date / time / minutes / task / note — BOM'd for Excel, quotes escaped), straight from the settings panel; E2E suite extended to 99 checks
 - **v1.10** — 実績バッジ: 14 collectible badges (first mikan / 10 / 50 / 100 sessions, 500 / 1000 total minutes, 3 / 7-day streaks, tree bloom + full bloom, daily goal, first memo, night owl + early bird) derived from your stats with live progress on locked ones and a toast when one unlocks; persisted in your data and recomputed on import; E2E suite extended to 94 checks

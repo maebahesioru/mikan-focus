@@ -84,6 +84,7 @@
   .tree-title { font-size: 0.95rem; font-weight: 700; color: #8a6d1a; margin-bottom: 6px; }
   #treeCanvas { display: block; margin: 0 auto; image-rendering: pixelated; }
   .tree-stage { font-size: 0.85rem; color: var(--dim); margin-top: 6px; }
+  .tree-actions { margin-top: 10px; } /* v1.13: 木をPNGで保存 */
   .stats { display: flex; gap: 12px; }
   .stat {
     flex: 1; text-align: center; background: var(--card); border-radius: 16px;
@@ -144,6 +145,23 @@
   body.zen footer { display: none; }
   body.zen .hint { display: none; }
   body.zen .app { max-width: 430px; }
+  /* ショートカットヘルプ (v1.13) */
+  #shortcutOverlay {
+    position: fixed; inset: 0; z-index: 110; display: flex; align-items: center;
+    justify-content: center; background: rgba(74, 56, 0, 0.45); padding: 20px;
+  }
+  #shortcutOverlay[hidden] { display: none; }
+  .shortcut-panel {
+    background: var(--card); border-radius: 18px; padding: 22px 24px; width: 100%; max-width: 380px;
+    box-shadow: 0 14px 44px rgba(0, 0, 0, 0.28); text-align: left;
+  }
+  .shortcut-panel .shortcut-title { font-weight: 800; color: #8a6d1a; margin-bottom: 14px; }
+  .shortcut-list { list-style: none; display: flex; flex-direction: column; gap: 9px; margin-bottom: 16px; }
+  .shortcut-list li { display: flex; align-items: center; justify-content: space-between; gap: 14px; font-size: 0.88rem; }
+  .shortcut-list kbd {
+    background: #f2e6c8; color: #8a6d1a; border: 1px solid #e2d2a2; border-bottom-width: 2px;
+    border-radius: 7px; padding: 2px 10px; font-family: inherit; font-size: 0.82rem; font-weight: 700; white-space: nowrap;
+  }
   .week-caption { font-size: 0.8rem; color: var(--dim); margin-top: 6px; }
   .settings-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
   .settings-actions button { padding: 9px 16px; font-size: 0.85rem; }
@@ -176,6 +194,13 @@
   .log-empty { font-size: 0.82rem; color: var(--dim); text-align: center; padding: 4px 0; }
   .log-more { margin-top: 10px; }
   .log-more button { padding: 8px 16px; font-size: 0.82rem; }
+  /* きろくの絞り込み (v1.13) */
+  .log-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .log-head .task-title { margin-bottom: 0; font-size: 0.95rem; font-weight: 700; color: #8a6d1a; }
+  #logFilter {
+    padding: 6px 10px; border: 2px solid #f2e6c8; border-radius: 10px; font-family: inherit;
+    font-size: 0.82rem; color: var(--ink); background: #fff; cursor: pointer; max-width: 55%;
+  }
   /* セッションメモ (v1.9) */
   .log-item { flex-wrap: wrap; }
   .log-note {
@@ -240,6 +265,9 @@
   body.dark .btn-sub:hover { background: #463d26; }
   body.dark .settings-toggles select, body.dark .settings-grid input,
   body.dark .task-add input[type=text], body.dark .note-edit input { background: #332c1f; color: #f4ead0; border-color: #4a4128; }
+  body.dark #logFilter { background: #332c1f; color: #f4ead0; border-color: #4a4128; }
+  body.dark .shortcut-panel .shortcut-title { color: #e5c98a; }
+  body.dark .shortcut-list kbd { background: #3a3320; color: #e8d9a8; border-color: #4a4128; }
   body.dark .task-item, body.dark .log-item, body.dark .badge-item { background: #332c1f; border-color: #4a4128; }
   body.dark .task-item.active { background: #3d3420; border-color: var(--accent); }
   body.dark .badge-item.unlocked { background: #3d3420; }
@@ -292,8 +320,9 @@
       <button class="btn-sub" id="skipBtn">スキップ</button>
       <button class="btn-sub" id="extendBtn">＋5分</button>
       <button class="btn-sub" id="zenBtn" aria-pressed="false">🧘 集中モード</button>
+      <button class="btn-sub" id="helpBtn" aria-haspopup="dialog" aria-expanded="false">⌨ ショートカット</button>
     </div>
-    <div class="hint">⌨️ スペース = 開始/一時停止　R = リセット　S = スキップ　Z = 集中モード　＋ = 5分延長</div>
+    <div class="hint">⌨️ スペース = 開始/一時停止　R = リセット　S = スキップ　Z = 集中モード　＋ = 5分延長　? = ヘルプ</div>
     <div class="active-task-line" id="activeTaskLine"></div>
   </div>
 
@@ -311,6 +340,7 @@
     <div class="tree-title">🌳 あなたのみかんの木</div>
     <canvas id="treeCanvas" width="320" height="180"></canvas>
     <div class="tree-stage" id="treeStage" aria-live="polite">まだ種をまいたばかり…</div>
+    <div class="tree-actions"><button class="btn-sub" id="treeSaveBtn" type="button">📷 木をPNGで保存</button></div>
   </div>
 
   <div class="stats">
@@ -350,7 +380,10 @@
   </div>
 
   <div class="card log-card">
-    <div class="task-title">📖 きろく（最近の集中セッション）</div>
+    <div class="log-head">
+      <div class="task-title">📖 きろく（最近の集中セッション）</div>
+      <select id="logFilter" aria-label="きろくをタスクで絞り込み"><option value="all">すべてのタスク</option></select>
+    </div>
     <ul class="log-list" id="logList"></ul>
     <div class="log-empty" id="logEmpty">集中タイムを完了すると、ここにきろくが残ります🍊</div>
     <div class="log-more"><button class="btn-sub" id="logMoreBtn" hidden>もっと見る</button></div>
@@ -411,7 +444,22 @@
     </details>
   </div>
 
-  <footer>みかんフォーカス v1.12 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.13 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+</div>
+<div id="shortcutOverlay" hidden>
+  <div class="shortcut-panel" role="dialog" aria-modal="true" aria-label="キーボードショートカット一覧">
+    <div class="shortcut-title">⌨️ キーボードショートカット</div>
+    <ul class="shortcut-list">
+      <li><span>スタート / 一時停止</span><kbd>スペース</kbd></li>
+      <li><span>タイマーをリセット</span><kbd>R</kbd></li>
+      <li><span>フェーズをスキップ</span><kbd>S</kbd></li>
+      <li><span>5分延長</span><kbd>＋</kbd></li>
+      <li><span>集中モード（Zen）切替</span><kbd>Z</kbd></li>
+      <li><span>このヘルプを表示</span><kbd>?</kbd></li>
+      <li><span>閉じる / 集中モード終了</span><kbd>Esc</kbd></li>
+    </ul>
+    <button class="btn-sub" id="shortcutCloseBtn" type="button">とじる</button>
+  </div>
 </div>
 <div id="badgeToastWrap" aria-live="polite"></div>
 <canvas id="confettiCanvas" aria-hidden="true"></canvas>
@@ -999,13 +1047,32 @@ function setZen(on) {
 }
 zenBtn.addEventListener('click', () => setZen(!document.body.classList.contains('zen')));
 
+// ===== v1.13: ショートカットヘルプ（? キー / ⌨ ボタン） =====
+const shortcutOverlay = document.getElementById('shortcutOverlay');
+const helpBtn = document.getElementById('helpBtn');
+function setShortcuts(on) {
+  shortcutOverlay.hidden = !on;
+  helpBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+  if (on) document.getElementById('shortcutCloseBtn').focus();
+}
+helpBtn.addEventListener('click', () => setShortcuts(shortcutOverlay.hidden));
+document.getElementById('shortcutCloseBtn').addEventListener('click', () => setShortcuts(false));
+shortcutOverlay.addEventListener('click', (e) => { if (e.target === shortcutOverlay) setShortcuts(false); });
+
 document.addEventListener('keydown', (e) => {
   if (e.target.closest('input, textarea, select')) return;
+  const overlayOpen = !shortcutOverlay.hidden;
+  if (e.key === 'Escape') {
+    if (overlayOpen) { setShortcuts(false); return; }
+    if (document.body.classList.contains('zen')) setZen(false);
+    return;
+  }
+  if (e.key === '?') { e.preventDefault(); setShortcuts(!overlayOpen); return; }
+  if (overlayOpen) return; // v1.13: ヘルプ表示中は他のショートカットを止める
   if (e.code === 'Space') { e.preventDefault(); toggleTimer(); }
   else if (e.key === 'r' || e.key === 'R') { resetTimer(); }
   else if (e.key === 's' || e.key === 'S') { skipPhase(); }
   else if (e.key === 'z' || e.key === 'Z') { setZen(!document.body.classList.contains('zen')); }
-  else if (e.key === 'Escape') { if (document.body.classList.contains('zen')) setZen(false); }
   else if (e.key === '+' || e.key === '=') { extendTimer(); }
 });
 
@@ -1216,6 +1283,40 @@ function renderTree() {
   updateStageLabel();
 }
 
+// ===== v1.13: 木をPNGで保存（2倍解像度・キャプション付き） =====
+document.getElementById('treeSaveBtn').addEventListener('click', () => {
+  const scale = 2, cap = 44;
+  const c = document.createElement('canvas');
+  c.width = W * scale;
+  c.height = H * scale + cap;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, c.height);
+  grad.addColorStop(0, '#fff8e7');
+  grad.addColorStop(1, '#ffedc2');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.imageSmoothingEnabled = false; // ピクセルアートをくっきり
+  ctx.drawImage(treeCanvas, 0, 0, W * scale, H * scale);
+  const today = data.stats.days[dayKey()] || { sessions: 0, minutes: 0 };
+  ctx.font = 'bold 17px "Noto Sans JP", "Hiragino Sans", sans-serif';
+  ctx.fillStyle = '#8a6d1a';
+  ctx.textBaseline = 'middle';
+  const midY = H * scale + cap / 2;
+  ctx.fillText(`みかんフォーカス ・ きろく ${data.stats.sessionsTotal} 回 ・ 今日 ${today.sessions} みかん`, 12, midY);
+  ctx.textAlign = 'right';
+  ctx.fillText(dayKey(), c.width - 12, midY);
+  c.toBlob((blob) => {
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `mikan-tree-${dayKey()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, 'image/png');
+});
+
 // ===== タスクリスト =====
 const taskListEl = document.getElementById('taskList');
 const taskInput = document.getElementById('taskInput');
@@ -1293,6 +1394,7 @@ function renderTasks() {
   }
   const t = activeTask();
   activeTaskLine.textContent = t ? `いまのタスク: ${t.name}（🍊×${t.pomos || 0}）` : '';
+  rebuildLogFilterOptions(); // v1.13: タスクの増減・改名をきろくフィルタへ反映
 }
 
 function addTask() {
@@ -1486,6 +1588,34 @@ const logMoreBtn = document.getElementById('logMoreBtn');
 let logShown = 8;
 let editingNote = null; // メモ編集中のエントリ番号 (v1.9)
 
+// ===== v1.13: きろくのタスク絞り込み =====
+const logFilterSel = document.getElementById('logFilter');
+let logFilter = 'all';
+
+function rebuildLogFilterOptions() {
+  const names = [];
+  for (const t of data.tasks || []) if (t.name && !names.includes(t.name)) names.push(t.name);
+  for (const h of data.history || []) if (h.task && !names.includes(h.task)) names.push(h.task);
+  logFilterSel.innerHTML = '';
+  const mk = (v, label) => {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = label;
+    logFilterSel.appendChild(o);
+  };
+  mk('all', 'すべてのタスク');
+  for (const n of names) mk(n, n);
+  if ((data.history || []).some(h => !h.task)) mk('__none__', '（タスクなし）');
+  if (![...logFilterSel.options].some(o => o.value === logFilter)) logFilter = 'all';
+  logFilterSel.value = logFilter;
+}
+
+logFilterSel.addEventListener('change', () => {
+  logFilter = logFilterSel.value;
+  logShown = 8;
+  renderLog();
+});
+
 function fmtWhen(ts) {
   const dt = new Date(ts);
   const mm = String(dt.getMinutes()).padStart(2, '0');
@@ -1493,9 +1623,14 @@ function fmtWhen(ts) {
 }
 
 function renderLog() {
-  const items = data.history || [];
+  const all = data.history || [];
+  // v1.13: タスクで絞り込み（__none__ = タスクなし）
+  const items = all.filter(h => logFilter === 'all' || (logFilter === '__none__' ? !h.task : h.task === logFilter));
   logListEl.innerHTML = '';
   logEmptyEl.style.display = items.length ? 'none' : '';
+  logEmptyEl.textContent = (!items.length && logFilter !== 'all')
+    ? 'このタスクのきろくはまだありません🍊'
+    : '集中タイムを完了すると、ここにきろくが残ります🍊';
   const slice = items.slice(0, logShown);
   slice.forEach((h, i) => {
     const li = document.createElement('li');
@@ -1565,6 +1700,7 @@ function renderLog() {
     logListEl.appendChild(li);
   });
   logMoreBtn.hidden = items.length <= logShown;
+  rebuildLogFilterOptions(); // v1.13
 }
 
 logMoreBtn.addEventListener('click', () => {

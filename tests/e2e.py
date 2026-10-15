@@ -10,11 +10,15 @@ reload persistence, zero JS errors, achievement badges (v1.10: grid, unlock on
 session / goal / memo, toasts, persistence, import recompute), CSV session-log
 export (v1.11), v1.12: task rename (✎ inline edit), dark theme (apply / persist /
 theme-color), ambient volume 0% = silent, timer state persistence (running &
-paused resume across reload, away-finished session completes on load).
+paused resume across reload, away-finished session completes on load),
+v1.13: shortcut help overlay (? / ⌨ button, Esc / backdrop / close, input guard),
+session-log filter by task (options, per-task filtering, no-task filter, empty hint),
+tree PNG export (download, signature, 640x404, content size).
 Plus PWA phase (HTTP-served): manifest, service worker registration, cache
 population, offline reload, install button.
 """
 import asyncio
+import datetime
 import functools
 import http.server
 import json
@@ -29,6 +33,11 @@ URL = (HERE / "index.html").as_uri()
 
 results = {}
 checks = []
+
+# v1.10 badges include 深夜0-4時 (night) / 朝5-8時 (morning): sessions created
+# while the test runs unlock one of them depending on the wall-clock hour.
+_now_hour = datetime.datetime.now().hour
+TOD_BADGE = 1 if (_now_hour < 4 or 5 <= _now_hour < 8) else 0
 
 
 def check(name: str, ok: bool, detail=""):
@@ -195,7 +204,7 @@ async def main():
         results["badge_toast"] = await page.locator(".badge-toast").count()
         check("unlock toast shown", results["badge_toast"] >= 1, str(results["badge_toast"]))
         results["badge_unlocked1"] = await page.locator(".badge-item.unlocked").count()
-        check("1 badge unlocked in grid", results["badge_unlocked1"] == 1, str(results["badge_unlocked1"]))
+        check("1 badge unlocked in grid", results["badge_unlocked1"] == 1 + TOD_BADGE, str(results["badge_unlocked1"]))
 
         # 5b. v1.4: session history log + daily goal counter
         results["log_count"] = await page.locator(".log-item").count()
@@ -250,7 +259,7 @@ async def main():
         check("goal badge unlocked", "goal" in results["badges_after_goal"], results["badges_after_goal"])
         check("bloom badge unlocked (growth 50)", "bloom" in results["badges_after_goal"], results["badges_after_goal"])
         results["badge_unlocked_goal"] = await page.locator(".badge-item.unlocked").count()
-        check("3 badges unlocked after goal", results["badge_unlocked_goal"] == 3, str(results["badge_unlocked_goal"]))
+        check("3 badges unlocked after goal", results["badge_unlocked_goal"] == 3 + TOD_BADGE, str(results["badge_unlocked_goal"]))
 
         # 6c. v1.6: focus heatmap (15-week calendar)
         hpx = await page.evaluate(
@@ -391,9 +400,9 @@ async def main():
         check("note rendered after reload", results["note_render_reload"] >= 1, str(results["note_render_reload"]))
         # v1.10: badges persisted across reload
         results["badges_reload"] = await page.evaluate("data.badges.length")
-        check("badges persisted after reload (4)", results["badges_reload"] == 4, str(results["badges_reload"]))
+        check("badges persisted after reload (4)", results["badges_reload"] == 4 + TOD_BADGE, str(results["badges_reload"]))
         results["badge_count_reload"] = await page.text_content("#badgeCount")
-        check("badge counter persisted 4/14", results["badge_count_reload"] == "たっせい 4/14", results["badge_count_reload"])
+        check("badge counter persisted 4/14", results["badge_count_reload"] == f"たっせい {4 + TOD_BADGE}/14", results["badge_count_reload"])
         results["rename_reload"] = await page.locator(".task-item").nth(0).text_content()
         check("renamed task persisted after reload", "テストタスクA改" in results["rename_reload"], results["rename_reload"])
 
@@ -537,6 +546,112 @@ async def main():
         results["dark_reload_bg"] = await page.evaluate(
             "getComputedStyle(document.querySelector('.card')).backgroundColor")
         check("dark surface applied on load", results["dark_reload_bg"] == "rgb(42, 37, 27)", results["dark_reload_bg"])
+
+        # 12. v1.13: shortcut help overlay (? key / ⌨ button)
+        results["shortcut_hidden0"] = await page.evaluate(
+            "document.getElementById('shortcutOverlay').hidden")
+        check("shortcut overlay hidden initially", results["shortcut_hidden0"] is True)
+        await page.keyboard.press("?")  # Shift+Slash 相当（'Shift+/' は key='/' になるので不可）
+        await page.wait_for_timeout(250)
+        results["shortcut_open"] = await page.evaluate(
+            "!document.getElementById('shortcutOverlay').hidden")
+        check("? opens the shortcut overlay", results["shortcut_open"] is True)
+        results["shortcut_rows"] = await page.locator(".shortcut-list li").count()
+        check("overlay lists 7 shortcuts", results["shortcut_rows"] == 7, str(results["shortcut_rows"]))
+        results["shortcut_space_row"] = await page.locator(".shortcut-list li").nth(0).text_content()
+        check("space row describes start/pause", "スタート" in results["shortcut_space_row"],
+              results["shortcut_space_row"])
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(250)
+        results["shortcut_esc"] = await page.evaluate(
+            "document.getElementById('shortcutOverlay').hidden")
+        check("Escape closes the overlay", results["shortcut_esc"] is True)
+        await page.click("#helpBtn")
+        await page.wait_for_timeout(250)
+        results["shortcut_btn_open"] = await page.evaluate(
+            "!document.getElementById('shortcutOverlay').hidden")
+        check("⌨ button opens the overlay", results["shortcut_btn_open"] is True)
+        await page.click("#shortcutCloseBtn")
+        await page.wait_for_timeout(250)
+        results["shortcut_btn_close"] = await page.evaluate(
+            "document.getElementById('shortcutOverlay').hidden")
+        check("close button hides the overlay", results["shortcut_btn_close"] is True)
+        # typing ? inside an input must not open the overlay
+        await page.click("#taskInput")
+        await page.keyboard.type("?")
+        await page.wait_for_timeout(250)
+        results["shortcut_input_guard"] = await page.evaluate(
+            "document.getElementById('shortcutOverlay').hidden")
+        check("? typed into an input does not open the overlay", results["shortcut_input_guard"] is True)
+
+        # 13. v1.13: session-log filter by task
+        await page.evaluate(
+            """() => {
+                 const t = data.tasks[0];
+                 data.activeTaskId = t.id;
+                 state.mode = 'work'; state.totalSec = 1500; state.remain = 0; complete();
+                 data.activeTaskId = null;
+                 state.mode = 'work'; state.totalSec = 1500; state.remain = 0; complete();
+               }"""
+        )
+        await page.wait_for_timeout(300)
+        await page.fill("#taskInput", "フィルタ用")
+        await page.press("#taskInput", "Enter")
+        await page.wait_for_timeout(250)
+        results["filter_options"] = await page.locator("#logFilter option").count()
+        check("filter lists all + 2 tasks + no-task", results["filter_options"] == 4,
+              str(results["filter_options"]))
+        results["filter_labels"] = await page.evaluate(
+            "[...document.querySelectorAll('#logFilter option')].map(o => o.textContent).join(',')")
+        check("filter option labels", results["filter_labels"] == "すべてのタスク,復元タスク,フィルタ用,（タスクなし）",
+              results["filter_labels"])
+        await page.select_option("#logFilter", "復元タスク")
+        await page.wait_for_timeout(250)
+        results["filter_task_count"] = await page.locator(".log-item").count()
+        check("filter shows only that task's 2 entries", results["filter_task_count"] == 2,
+              str(results["filter_task_count"]))
+        results["filter_task_match"] = await page.evaluate(
+            "[...document.querySelectorAll('.log-item .log-name')].every(n => n.textContent === '復元タスク')")
+        check("every filtered row is that task", results["filter_task_match"] is True)
+        await page.select_option("#logFilter", "フィルタ用")
+        await page.wait_for_timeout(250)
+        results["filter_empty_count"] = await page.locator(".log-item").count()
+        results["filter_empty_msg"] = await page.text_content("#logEmpty")
+        check("task without sessions -> 0 rows + hint",
+              results["filter_empty_count"] == 0 and "まだありません" in results["filter_empty_msg"],
+              f"{results['filter_empty_count']} / {results['filter_empty_msg']}")
+        await page.select_option("#logFilter", "__none__")
+        await page.wait_for_timeout(250)
+        results["filter_none_count"] = await page.locator(".log-item").count()
+        results["filter_none_text"] = await page.locator(".log-item").nth(0).text_content()
+        check("no-task filter shows its 1 entry",
+              results["filter_none_count"] == 1 and "（タスクなし）" in results["filter_none_text"],
+              f"{results['filter_none_count']} / {results['filter_none_text']}")
+        await page.select_option("#logFilter", "all")
+        await page.wait_for_timeout(250)
+        results["filter_all_count"] = await page.locator(".log-item").count()
+        check("reset to all shows 3 entries", results["filter_all_count"] == 3,
+              str(results["filter_all_count"]))
+
+        # 14. v1.13: save the mikan tree as a PNG
+        try:
+            async with page.expect_download(timeout=5000) as dl3_info:
+                await page.click("#treeSaveBtn")
+            dl3 = await dl3_info.value
+            results["tree_png_name"] = dl3.suggested_filename
+            png_path = await dl3.path()
+            png_bytes = pathlib.Path(png_path).read_bytes()
+            check("tree PNG named mikan-tree-*.png",
+                  results["tree_png_name"].startswith("mikan-tree-") and results["tree_png_name"].endswith(".png"),
+                  str(results["tree_png_name"]))
+            check("tree PNG has PNG signature", png_bytes[:8] == b"\x89PNG\r\n\x1a\n", str(png_bytes[:8]))
+            pw = int.from_bytes(png_bytes[16:20], "big")
+            ph = int.from_bytes(png_bytes[20:24], "big")
+            results["tree_png_dims"] = [pw, ph]
+            check("tree PNG is 640x404 (2x + caption)", pw == 640 and ph == 404, f"{pw}x{ph}")
+            check("tree PNG has real content (>3KB)", len(png_bytes) > 3000, str(len(png_bytes)))
+        except Exception as e:  # noqa: BLE001
+            check("tree PNG export works", False, str(e)[:120])
 
         results["js_errors"] = errors
         check("no JS errors", len(errors) == 0, "; ".join(errors[:3]))
