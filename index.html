@@ -85,7 +85,7 @@
   #treeCanvas { display: block; margin: 0 auto; image-rendering: pixelated; }
   .tree-stage { font-size: 0.85rem; color: var(--dim); margin-top: 6px; }
   .tree-actions { margin-top: 10px; } /* v1.13: 木をPNGで保存 */
-  .stats { display: flex; gap: 12px; }
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; }
   .stat {
     flex: 1; text-align: center; background: var(--card); border-radius: 16px;
     padding: 16px 8px; box-shadow: 0 3px 16px rgba(180, 140, 40, 0.10);
@@ -178,6 +178,7 @@
   .goal-count { font-size: 0.95rem; font-weight: 800; color: var(--accent2); white-space: nowrap; }
   .goal-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; min-height: 1.4em; }
   .goal-streak { font-size: 0.85rem; font-weight: 700; color: var(--accent2); }
+  .goal-remain { font-size: 0.82rem; font-weight: 700; color: #8a6d1a; } /* v1.17: 目標まであと何こ */
   .goal-banner { font-size: 0.85rem; font-weight: 800; color: #4a7a2a; display: none; }
   .goal-banner.show { display: inline; animation: pop 0.4s ease; }
   @keyframes pop { 0% { transform: scale(0.6); } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
@@ -323,7 +324,8 @@
   body.dark .badge-item .b-name { color: #cbb277; }
   body.dark .badge-item.unlocked .b-name { color: var(--accent); }
   body.dark .tree-title, body.dark .task-title, body.dark .goal-label, body.dark .settings-grid label,
-  body.dark .settings-toggles label, body.dark .preset-row .preset-label { color: #e5c98a; }
+  body.dark .settings-toggles label, body.dark .preset-row .preset-label,
+  body.dark .goal-remain { color: #e5c98a; }
   body.dark .progress-track, body.dark .goal-bar, body.dark .dot { background: #3a3320; }
   body.dark .dot { border-color: #4a4128; }
   body.dark .log-note { color: #c9b98a; }
@@ -397,6 +399,7 @@
     <div class="stat"><div class="num" id="statToday">0</div><div class="lbl">今日のみかん</div></div>
     <div class="stat"><div class="num" id="statTotal">0</div><div class="lbl">これまでのみかん</div></div>
     <div class="stat"><div class="num" id="statMinutes">0</div><div class="lbl">集中した分（分）</div></div>
+    <div class="stat"><div class="num" id="statTodayMin">0</div><div class="lbl">今日の集中（分）</div></div>
   </div>
 
   <div class="card goal-card">
@@ -407,6 +410,7 @@
     </div>
     <div class="goal-meta">
       <span class="goal-streak" id="goalStreak"></span>
+      <span class="goal-remain" id="goalRemain" hidden></span>
       <span class="goal-banner" id="goalBanner">🎉 今日の目標を達成しました！</span>
     </div>
   </div>
@@ -499,7 +503,7 @@
     </details>
   </div>
 
-  <footer>みかんフォーカス v1.15 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.17 — Embassy プロジェクト / データはブラウザに保存されます</footer>
 </div>
 <div id="shortcutOverlay" hidden>
   <div class="shortcut-panel" role="dialog" aria-modal="true" aria-label="キーボードショートカット一覧">
@@ -676,6 +680,7 @@ function renderStats() {
   document.getElementById('statToday').textContent = today.sessions;
   document.getElementById('statTotal').textContent = data.stats.sessionsTotal;
   document.getElementById('statMinutes').textContent = data.stats.minutesTotal;
+  document.getElementById('statTodayMin').textContent = today.minutes; // v1.17: 今日の集中（分）
 }
 
 // ===== 今日の目標 & 連続日数 =====
@@ -702,6 +707,10 @@ function renderGoal() {
   document.getElementById('goalCount').textContent = `${today.sessions}/${goal}`;
   const streak = computeStreak();
   document.getElementById('goalStreak').textContent = streak > 1 ? `🔥 ${streak}日連続で集中中！` : (streak === 1 ? '🔥 今日も集中できた！' : '');
+  // v1.17: 目標まであと何こ（達成した日は隠す）
+  const remainEl = document.getElementById('goalRemain');
+  remainEl.hidden = done;
+  remainEl.textContent = done ? '' : `あと ${Math.max(0, goal - today.sessions)} こ`;
   document.getElementById('goalBanner').classList.toggle('show', done && data.goalCelebrated === dayKey());
 }
 

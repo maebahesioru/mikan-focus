@@ -23,6 +23,8 @@ entry, persists across reload), preset hotkeys 1-4 (15/25/45/60分, input guard)
 v1.16: per-day totals on the day headers (count + minutes, recomputed from the
 filtered entries), undo for a deleted entry (とりけし toast, restores at its
 time-ordered position, only the latest delete, auto-hides after 5s, gone on reload).
+v1.17: goal remaining line (あと N こ, hides when the daily goal is met, follows
+the target setting), today's-minutes stat (4th stat card, live from stats.days).
 Plus PWA phase (HTTP-served): manifest, service worker registration, cache
 population, offline reload, install button.
 """
@@ -74,6 +76,12 @@ async def main():
         results["time0"] = await page.text_content("#timeDisplay")
         check("initial 25:00", results["time0"] == "25:00", results["time0"])
         check("task list initially empty", await page.locator(".task-item").count() == 0)
+
+        # 1c. v1.17: goal remaining + today's-minutes stat
+        results["goal_remain0"] = await page.text_content("#goalRemain")
+        results["stat_today_min0"] = await page.text_content("#statTodayMin")
+        check("goal remaining starts あと 4 こ", results["goal_remain0"] == "あと 4 こ", results["goal_remain0"])
+        check("today-minutes stat starts 0", results["stat_today_min0"] == "0", results["stat_today_min0"])
 
         # 1b. v1.10: achievement badges — grid renders, none unlocked yet
         results["badge_items"] = await page.locator(".badge-item").count()
@@ -202,6 +210,11 @@ async def main():
         results["stat_minutes"] = await page.text_content("#statMinutes")
         check("today count = 1", results["stat_today"] == "1", results["stat_today"])
         check("minutes = 25", results["stat_minutes"] == "25", results["stat_minutes"])
+        # 5d. v1.17: today's-minutes stat + goal remaining after one session
+        results["stat_today_min1"] = await page.text_content("#statTodayMin")
+        results["goal_remain1"] = await page.text_content("#goalRemain")
+        check("today-minutes stat = 25 after one session", results["stat_today_min1"] == "25", results["stat_today_min1"])
+        check("goal remaining counts down (あと 3 こ)", results["goal_remain1"] == "あと 3 こ", results["goal_remain1"])
         results["taskB_text"] = await page.locator(".task-item").nth(1).text_content()
         check("active task got pomo", "🍊×1" in results["taskB_text"], results["taskB_text"])
         results["tree_stage"] = await page.text_content("#treeStage")
@@ -253,6 +266,12 @@ async def main():
             "document.getElementById('goalFill').classList.contains('done')"
         )
         check("goal bar done state", results["goal_fill_done"] is True)
+        # 6b-3. v1.17: goal remaining hides at 4/4 + today's-minutes stat = 100
+        results["goal_remain_done"] = await page.evaluate(
+            "document.getElementById('goalRemain').hidden")
+        results["stat_today_min4"] = await page.text_content("#statTodayMin")
+        check("goal remaining hides at 4/4", results["goal_remain_done"] is True)
+        check("today-minutes stat = 100 after four sessions", results["stat_today_min4"] == "100", results["stat_today_min4"])
         conf_px = await page.evaluate(
             """() => { const c = document.getElementById('confettiCanvas');
                  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
@@ -486,6 +505,11 @@ async def main():
         check("log empty after v2 import (no history)", results["log_empty_after_import"] is True)
         results["goal_count_import"] = await page.text_content("#goalCount")
         check("goal counter from imported day 3/4", results["goal_count_import"] == "3/4", results["goal_count_import"])
+        # 9b. v1.17: import feeds both new readouts
+        results["goal_remain_import"] = await page.text_content("#goalRemain")
+        results["stat_today_min_import"] = await page.text_content("#statTodayMin")
+        check("import: goal remaining あと 1 こ", results["goal_remain_import"] == "あと 1 こ", results["goal_remain_import"])
+        check("import: today-minutes stat = 75", results["stat_today_min_import"] == "75", results["stat_today_min_import"])
         # v1.10: import recomputes badges from imported stats (quietly, no toasts)
         results["badges_import"] = await page.evaluate("data.badges.slice().sort().join(',')")
         check("import recomputed badges (first,s10)", results["badges_import"] == "first,s10", results["badges_import"])
@@ -544,6 +568,8 @@ async def main():
               results["away_log"])
         results["away_goal"] = await page.text_content("#goalCount")
         check("away-complete counted toward the daily goal (4/4)", results["away_goal"] == "4/4", results["away_goal"])
+        results["stat_today_min_away"] = await page.text_content("#statTodayMin")
+        check("today-minutes stat = 100 after the away session", results["stat_today_min_away"] == "100", results["stat_today_min_away"])
         # 11c. theme choice persists across reload
         await page.evaluate("document.querySelector('.settings details').open = true")
         await page.select_option("#themeSel", "dark")
@@ -555,6 +581,22 @@ async def main():
         results["dark_reload_bg"] = await page.evaluate(
             "getComputedStyle(document.querySelector('.card')).backgroundColor")
         check("dark surface applied on load", results["dark_reload_bg"] == "rgb(42, 37, 27)", results["dark_reload_bg"])
+        # 11d. v1.17: goal remaining follows the daily-goal setting
+        await page.evaluate("document.querySelector('.settings details').open = true")
+        await page.fill("#dailyGoal", "6")
+        await page.evaluate("document.getElementById('dailyGoal').dispatchEvent(new Event('change'))")
+        await page.wait_for_timeout(250)
+        results["goal_remain_6"] = await page.text_content("#goalRemain")
+        results["goal_count_6"] = await page.text_content("#goalCount")
+        check("goal remaining follows a new target (あと 2 こ)",
+              results["goal_remain_6"] == "あと 2 こ" and results["goal_count_6"] == "4/6",
+              f"{results['goal_remain_6']} / {results['goal_count_6']}")
+        await page.fill("#dailyGoal", "4")
+        await page.evaluate("document.getElementById('dailyGoal').dispatchEvent(new Event('change'))")
+        await page.wait_for_timeout(250)
+        results["goal_remain_back"] = await page.evaluate("document.getElementById('goalRemain').hidden")
+        check("goal remaining hides again at 4/4", results["goal_remain_back"] is True)
+        await page.evaluate("if (document.activeElement) document.activeElement.blur();")
 
         # 12. v1.13: shortcut help overlay (? key / ⌨ button)
         results["shortcut_hidden0"] = await page.evaluate(
