@@ -24,6 +24,9 @@ A tiny pomodoro timer with a pixel-art mikan tree that grows as you complete foc
 - 📖 Session log — every finished focus session is recorded (time, task, minutes)
 - 📝 Session notes — attach a one-line memo to any session in the log (edit inline, saved with your data, included in backups)
 - 🔍 Log filter — narrow the session log down to a single task (or「タスクなし」) with the dropdown in the log card
+- 🔎 Log search — a search box narrows the log by task name or memo text (case-insensitive substring, combines with the task filter)
+- 🧮 Log summary — the log card shows the entry count and total focus minutes the current filter + search covers
+- ↕️ Task reorder — move tasks up / down with ↑/↓ buttons (disabled at the ends, order is saved)
 - 📷 Tree PNG export — save your mikan tree as a 2x pixel-perfect PNG (caption: total sessions / today's mikans / date)
 - ⌨️ Shortcut help — press `?` (or the ⌨ button) for an overlay of every keyboard shortcut; `Esc` / backdrop / とじる closes it
 - 🏅 Achievement badges — 14 badges to collect (sessions, total minutes, streaks, tree growth, daily goal, memos, night/morning focus); locked ones show live progress, and unlocking pops a toast; saved with your data
@@ -52,7 +55,7 @@ python3 -m http.server 3964
 
 ## Test
 
-E2E suite (Playwright, headless Chromium) — 148 checks covering timer, tasks (incl. rename), chart, persistence, export/import, daily goal + confetti, session log, session notes, focus presets, achievement badges (grid, unlocks, toasts, persistence, import recompute), CSV session-log export, ambient sound engine (incl. 0% = silent), dark theme (apply / persist / theme-color), timer-state persistence (running & paused resume across reload, away-finished session completes on load), shortcut help overlay (? key / button / Esc / input guard), log filter by task (options, per-task, no-task, empty hint), tree PNG export (download / signature / dimensions), PWA (manifest, service worker, offline reload):
+E2E suite (Playwright, headless Chromium) — 165 checks covering timer, tasks (incl. rename), chart, persistence, export/import, daily goal + confetti, session log, session notes, focus presets, achievement badges (grid, unlocks, toasts, persistence, import recompute), CSV session-log export, ambient sound engine (incl. 0% = silent), dark theme (apply / persist / theme-color), timer-state persistence (running & paused resume across reload, away-finished session completes on load), shortcut help overlay (? key / button / Esc / input guard), log filter by task (options, per-task, no-task, empty hint), tree PNG export (download / signature / dimensions), log search (task/note, case-insensitive, filter combo, query hint, clear button), log summary line, task reorder (edge states, persistence, active task kept), PWA (manifest, service worker, offline reload):
 
 ```bash
 uv run --with playwright python tests/e2e.py
@@ -68,6 +71,7 @@ Made for [Hack Club Embassy](https://embassy.hackclub.com/).
 
 ## Changelog
 
+- **v1.14** — きろく検索 + きろくサマリー + タスク並べ替え: the session log gains a search box that filters by task name or memo (case-insensitive substring; combines with the task-filter dropdown; a no-match query shows its own hint, and ✕ / Esc clears it); the log card now reports how many entries and total minutes the current filter + search covers (しぼりこみ中 / ぜんぶで); tasks can be reordered with ↑/↓ buttons (disabled at the ends, order persists, the active task is untouched); E2E suite extended to 165 checks
 - **v1.13** — きろくフィルタ + ショートカットヘルプ + 木のPNG保存: the session log can be filtered down to a single task (or「タスクなし」) from a dropdown (options track your tasks + history, with a hint when a task has no sessions yet); press `?` or the ⌨ button for a keyboard-shortcut help overlay (closed by `Esc`, a backdrop click, or とじる); the mikan tree can be saved as a 2x pixel-perfect PNG with a caption (total sessions / today's mikans / date); test suite hardened — the 朝/深夜 badges depend on the wall-clock hour, so the E2E expectations now account for it; E2E suite extended to 148 checks
 - **v1.12** — タイマー復元 + タスク名変更 + ダークテーマ: the running (or paused) timer now survives a reload — it resumes where it left off, and a phase that finished while you were away completes on load (mikan awarded); tasks can be renamed in place with the ✎ button; a theme picker adds light / dark / auto (follows your OS); two fixes — countdown seconds no longer drift over long sessions, and the ambient volume slider at 0% is truly silent (it used to keep playing at 1%); E2E suite extended to 129 checks
 - **v1.11** — きろくCSV書き出し: export the full session log as a CSV (date / time / minutes / task / note — BOM'd for Excel, quotes escaped), straight from the settings panel; E2E suite extended to 99 checks

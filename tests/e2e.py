@@ -13,7 +13,10 @@ theme-color), ambient volume 0% = silent, timer state persistence (running &
 paused resume across reload, away-finished session completes on load),
 v1.13: shortcut help overlay (? / ⌨ button, Esc / backdrop / close, input guard),
 session-log filter by task (options, per-task filtering, no-task filter, empty hint),
-tree PNG export (download, signature, 640x404, content size).
+tree PNG export (download, signature, 640x404, content size),
+v1.14: session-log search (task/note substring, case-insensitive, combined with the
+task filter, empty hint, clear button), filtered-log summary line (count + total minutes),
+task reorder (↑/↓ buttons, edge disabled states, persistence, no active-task change).
 Plus PWA phase (HTTP-served): manifest, service worker registration, cache
 population, offline reload, install button.
 """
@@ -652,6 +655,94 @@ async def main():
             check("tree PNG has real content (>3KB)", len(png_bytes) > 3000, str(len(png_bytes)))
         except Exception as e:  # noqa: BLE001
             check("tree PNG export works", False, str(e)[:120])
+
+        # 15. v1.14: session-log search + summary line + task reorder
+        # 15a. search box filters by task name
+        check("log search box present", await page.locator("#logSearch").count() == 1)
+        await page.fill("#logSearch", "復元")
+        await page.wait_for_timeout(250)
+        results["search_task_count"] = await page.locator(".log-item").count()
+        check("search '復元' shows 2 rows", results["search_task_count"] == 2, str(results["search_task_count"]))
+        results["search_rows_ok"] = await page.evaluate(
+            "[...document.querySelectorAll('.log-item .log-name')].every(n => n.textContent === '復元タスク')")
+        check("search rows are all that task", results["search_rows_ok"] is True)
+        results["summary_search"] = await page.text_content("#logSummary")
+        check("summary shows しぼりこみ中 + totals",
+              results["summary_search"] == "しぼりこみ中: 2件 ・ 合計 50分", results["summary_search"])
+        # no-match query -> 0 rows + hint quoting the query
+        await page.fill("#logSearch", "zzz-not-found")
+        await page.wait_for_timeout(250)
+        results["search_none_count"] = await page.locator(".log-item").count()
+        results["search_none_msg"] = await page.text_content("#logEmpty")
+        check("no-match search -> 0 rows + query hint",
+              results["search_none_count"] == 0
+              and "「zzz-not-found」に一致するきろくはありません" in results["search_none_msg"],
+              f"{results['search_none_count']} / {results['search_none_msg']}")
+        # notes are searched too, case-insensitively (seed notes directly)
+        await page.evaluate(
+            "data.history[0].note = 'E2E MEMO'; data.history[2].note = 'みかんメモ'; saveData(); renderLog();")
+        await page.wait_for_timeout(200)
+        await page.fill("#logSearch", "memo")
+        await page.wait_for_timeout(250)
+        results["search_note_count"] = await page.locator(".log-item").count()
+        results["search_note_name"] = await page.locator(".log-item .log-name").nth(0).text_content()
+        check("search matches note case-insensitively",
+              results["search_note_count"] == 1 and results["search_note_name"] == "（タスクなし）",
+              f"{results['search_note_count']} / {results['search_note_name']}")
+        # search + task filter combine
+        await page.select_option("#logFilter", "復元タスク")
+        await page.wait_for_timeout(250)
+        results["search_filter_count"] = await page.locator(".log-item").count()
+        results["search_filter_msg"] = await page.text_content("#logEmpty")
+        check("search + filter combine (0 rows, query hint)",
+              results["search_filter_count"] == 0 and "memo" in results["search_filter_msg"],
+              f"{results['search_filter_count']} / {results['search_filter_msg']}")
+        # clear button resets the search but keeps the filter
+        await page.click("#logSearchClear")
+        await page.wait_for_timeout(250)
+        results["search_clear_val"] = await page.input_value("#logSearch")
+        results["search_clear_rows"] = await page.locator(".log-item").count()
+        check("clear button resets search, keeps filter",
+              results["search_clear_val"] == "" and results["search_clear_rows"] == 2,
+              f"{results['search_clear_val']} / {results['search_clear_rows']}")
+        await page.select_option("#logFilter", "all")
+        await page.wait_for_timeout(250)
+        results["summary_all"] = await page.text_content("#logSummary")
+        check("summary back to ぜんぶで + totals", results["summary_all"] == "ぜんぶで 3件 ・ 合計 75分",
+              results["summary_all"])
+        results["note_render_after_seed"] = await page.locator(".log-note").count()
+        check("seeded notes rendered", results["note_render_after_seed"] == 2, str(results["note_render_after_seed"]))
+
+        # 15b. task reorder (↑↓ buttons)
+        results["move_btns"] = await page.locator(".t-move").count()
+        check("each task has ↑ and ↓ buttons", results["move_btns"] == 4, str(results["move_btns"]))
+        results["up_disabled_first"] = await page.locator(".task-item").nth(0).locator(".t-up").is_disabled()
+        results["down_disabled_last"] = await page.locator(".task-item").nth(1).locator(".t-down").is_disabled()
+        check("edge buttons disabled (first ↑ / last ↓)",
+              results["up_disabled_first"] is True and results["down_disabled_last"] is True,
+              f"{results['up_disabled_first']} / {results['down_disabled_last']}")
+        results["active_before_reorder"] = await page.evaluate("data.activeTaskId")
+        await page.locator(".task-item").nth(1).locator(".t-up").click()
+        await page.wait_for_timeout(250)
+        results["reorder_names"] = await page.evaluate("data.tasks.map(t => t.name).join(',')")
+        results["reorder_active_kept"] = await page.evaluate("data.activeTaskId")
+        check("↑ swaps the task order", results["reorder_names"] == "フィルタ用,復元タスク", results["reorder_names"])
+        check("reorder does not change the active task",
+              results["reorder_active_kept"] == results["active_before_reorder"]
+              and results["active_before_reorder"] is not None,
+              f"{results['active_before_reorder']} -> {results['reorder_active_kept']}")
+        await page.reload()
+        await page.wait_for_timeout(400)
+        results["reorder_reload"] = await page.evaluate("data.tasks.map(t => t.name).join(',')")
+        check("reordered list persists after reload", results["reorder_reload"] == "フィルタ用,復元タスク",
+              results["reorder_reload"])
+        await page.locator(".task-item").nth(0).locator(".t-down").click()
+        await page.wait_for_timeout(250)
+        results["reorder_back"] = await page.evaluate("data.tasks.map(t => t.name).join(',')")
+        results["active_after_down"] = await page.evaluate("data.activeTaskId")
+        check("↓ moves it back", results["reorder_back"] == "復元タスク,フィルタ用", results["reorder_back"])
+        check("↓ also keeps the active task", results["active_after_down"] == results["active_before_reorder"],
+              str(results["active_after_down"]))
 
         results["js_errors"] = errors
         check("no JS errors", len(errors) == 0, "; ".join(errors[:3]))

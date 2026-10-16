@@ -201,6 +201,26 @@
     padding: 6px 10px; border: 2px solid #f2e6c8; border-radius: 10px; font-family: inherit;
     font-size: 0.82rem; color: var(--ink); background: #fff; cursor: pointer; max-width: 55%;
   }
+  /* きろく検索 + サマリー (v1.14) */
+  .log-search { display: flex; gap: 6px; margin-bottom: 8px; }
+  #logSearch {
+    flex: 1; min-width: 0; padding: 7px 12px; border: 2px solid #f2e6c8; border-radius: 10px;
+    font-family: inherit; font-size: 0.82rem; color: var(--ink); background: #fff;
+  }
+  #logSearch:focus { outline: none; border-color: var(--accent); }
+  #logSearchClear {
+    border: none; background: #f2e6c8; color: #8a6d1a; border-radius: 10px; cursor: pointer;
+    font-size: 0.8rem; padding: 0 12px; font-family: inherit;
+  }
+  #logSearchClear:hover { background: #ecdcb2; }
+  .log-summary { font-size: 0.78rem; color: var(--dim); margin-bottom: 8px; text-align: right; }
+  /* タスク並べ替え (v1.14) */
+  .t-move {
+    border: none; background: none; cursor: pointer; font-size: 0.85rem; color: var(--dim);
+    padding: 4px; border-radius: 8px; line-height: 1;
+  }
+  .t-move:hover:not(:disabled) { background: #f2e6c8; color: #8a6d1a; }
+  .t-move:disabled { opacity: 0.25; cursor: default; }
   /* セッションメモ (v1.9) */
   .log-item { flex-wrap: wrap; }
   .log-note {
@@ -266,6 +286,9 @@
   body.dark .settings-toggles select, body.dark .settings-grid input,
   body.dark .task-add input[type=text], body.dark .note-edit input { background: #332c1f; color: #f4ead0; border-color: #4a4128; }
   body.dark #logFilter { background: #332c1f; color: #f4ead0; border-color: #4a4128; }
+  body.dark #logSearch { background: #332c1f; color: #f4ead0; border-color: #4a4128; }
+  body.dark #logSearchClear { background: #3a3320; color: #e8d9a8; }
+  body.dark .t-move:hover:not(:disabled) { background: #3a3320; color: #e8d9a8; }
   body.dark .shortcut-panel .shortcut-title { color: #e5c98a; }
   body.dark .shortcut-list kbd { background: #3a3320; color: #e8d9a8; border-color: #4a4128; }
   body.dark .task-item, body.dark .log-item, body.dark .badge-item { background: #332c1f; border-color: #4a4128; }
@@ -384,6 +407,11 @@
       <div class="task-title">📖 きろく（最近の集中セッション）</div>
       <select id="logFilter" aria-label="きろくをタスクで絞り込み"><option value="all">すべてのタスク</option></select>
     </div>
+    <div class="log-search">
+      <input type="text" id="logSearch" placeholder="🔍 検索（タスク名・メモ）" maxlength="60" aria-label="きろくを検索">
+      <button type="button" id="logSearchClear" aria-label="検索をクリア" hidden>✕</button>
+    </div>
+    <div class="log-summary" id="logSummary" aria-live="polite"></div>
     <ul class="log-list" id="logList"></ul>
     <div class="log-empty" id="logEmpty">集中タイムを完了すると、ここにきろくが残ります🍊</div>
     <div class="log-more"><button class="btn-sub" id="logMoreBtn" hidden>もっと見る</button></div>
@@ -444,7 +472,7 @@
     </details>
   </div>
 
-  <footer>みかんフォーカス v1.13 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.14 — Embassy プロジェクト / データはブラウザに保存されます</footer>
 </div>
 <div id="shortcutOverlay" hidden>
   <div class="shortcut-panel" role="dialog" aria-modal="true" aria-label="キーボードショートカット一覧">
@@ -1387,7 +1415,25 @@ function renderTasks() {
       del.textContent = '✕';
       del.title = 'このタスクを削除';
       del.addEventListener('click', (e) => { e.stopPropagation(); deleteTask(task.id); });
-      li.append(name, pomos, edit, del);
+      // v1.14: 並べ替え（↑↓）
+      const idx = data.tasks.indexOf(task);
+      const up = document.createElement('button');
+      up.className = 't-move t-up';
+      up.type = 'button';
+      up.textContent = '↑';
+      up.title = 'このタスクを上へ移動';
+      up.setAttribute('aria-label', 'タスクを上へ移動');
+      up.disabled = idx === 0;
+      up.addEventListener('click', (e) => { e.stopPropagation(); moveTask(task.id, -1); });
+      const down = document.createElement('button');
+      down.className = 't-move t-down';
+      down.type = 'button';
+      down.textContent = '↓';
+      down.title = 'このタスクを下へ移動';
+      down.setAttribute('aria-label', 'タスクを下へ移動');
+      down.disabled = idx === data.tasks.length - 1;
+      down.addEventListener('click', (e) => { e.stopPropagation(); moveTask(task.id, 1); });
+      li.append(name, pomos, up, down, edit, del);
     }
     li.addEventListener('click', () => selectTask(task.id));
     taskListEl.appendChild(li);
@@ -1420,6 +1466,17 @@ function deleteTask(id) {
   data.tasks = data.tasks.filter(t => t.id !== id);
   if (data.activeTaskId === id) data.activeTaskId = null;
   if (editingTask === id) editingTask = null; // v1.12
+  saveData();
+  renderTasks();
+}
+
+// ===== v1.14: タスクの並べ替え（↑↓ボタン） =====
+function moveTask(id, dir) {
+  const i = data.tasks.findIndex(t => t.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= data.tasks.length) return;
+  const [moved] = data.tasks.splice(i, 1);
+  data.tasks.splice(j, 0, moved);
   saveData();
   renderTasks();
 }
@@ -1591,6 +1648,11 @@ let editingNote = null; // メモ編集中のエントリ番号 (v1.9)
 // ===== v1.13: きろくのタスク絞り込み =====
 const logFilterSel = document.getElementById('logFilter');
 let logFilter = 'all';
+// ===== v1.14: きろく検索 =====
+const logSearchEl = document.getElementById('logSearch');
+const logSearchClearBtn = document.getElementById('logSearchClear');
+const logSummaryEl = document.getElementById('logSummary');
+let logQuery = '';
 
 function rebuildLogFilterOptions() {
   const names = [];
@@ -1616,6 +1678,28 @@ logFilterSel.addEventListener('change', () => {
   renderLog();
 });
 
+// ===== v1.14: きろく検索（タスク名・メモを大文字小文字を無視して部分一致） =====
+function resetLogSearch() {
+  logSearchEl.value = '';
+  logQuery = '';
+  logSearchClearBtn.hidden = true;
+}
+logSearchEl.addEventListener('input', () => {
+  logQuery = logSearchEl.value;
+  logSearchClearBtn.hidden = !logQuery.trim();
+  logShown = 8;
+  renderLog();
+});
+logSearchEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { resetLogSearch(); logShown = 8; renderLog(); }
+});
+logSearchClearBtn.addEventListener('click', () => {
+  resetLogSearch();
+  logShown = 8;
+  renderLog();
+  logSearchEl.focus();
+});
+
 function fmtWhen(ts) {
   const dt = new Date(ts);
   const mm = String(dt.getMinutes()).padStart(2, '0');
@@ -1624,13 +1708,25 @@ function fmtWhen(ts) {
 
 function renderLog() {
   const all = data.history || [];
-  // v1.13: タスクで絞り込み（__none__ = タスクなし）
-  const items = all.filter(h => logFilter === 'all' || (logFilter === '__none__' ? !h.task : h.task === logFilter));
+  // v1.13: タスクで絞り込み（__none__ = タスクなし）/ v1.14: 検索（タスク名・メモ、大文字小文字を無視）
+  const q = logQuery.trim().toLowerCase();
+  const items = all.filter(h => {
+    if (logFilter !== 'all' && (logFilter === '__none__' ? h.task : h.task !== logFilter)) return false;
+    if (q && !(((h.task || '') + ' ' + (h.note || '')).toLowerCase().includes(q))) return false;
+    return true;
+  });
   logListEl.innerHTML = '';
   logEmptyEl.style.display = items.length ? 'none' : '';
-  logEmptyEl.textContent = (!items.length && logFilter !== 'all')
-    ? 'このタスクのきろくはまだありません🍊'
-    : '集中タイムを完了すると、ここにきろくが残ります🍊';
+  logEmptyEl.textContent = (!items.length && q)
+    ? `「${logQuery.trim()}」に一致するきろくはありません🍊`
+    : ((!items.length && logFilter !== 'all')
+      ? 'このタスクのきろくはまだありません🍊'
+      : '集中タイムを完了すると、ここにきろくが残ります🍊');
+  // v1.14: しぼりこみ結果の合計
+  const totalMin = items.reduce((a, h) => a + (h.mins || 0), 0);
+  logSummaryEl.textContent = (logFilter !== 'all' || q)
+    ? `しぼりこみ中: ${items.length}件 ・ 合計 ${totalMin}分`
+    : `ぜんぶで ${items.length}件 ・ 合計 ${totalMin}分`;
   const slice = items.slice(0, logShown);
   slice.forEach((h, i) => {
     const li = document.createElement('li');
@@ -1793,6 +1889,7 @@ importFile.addEventListener('change', () => {
       setMode('work');
       syncSettingsUI();
       logShown = 8;
+      resetLogSearch(); // v1.14: 検索条件もリセット
       editingTask = null; // v1.12
       checkBadges(true);
       render();
