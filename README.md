@@ -21,6 +21,7 @@ A tiny pomodoro timer with a pixel-art mikan tree that grows as you complete foc
 - ⏱ Sticky timer — the running (or paused) phase is saved, so a reload or a closed tab resumes exactly where it left off; a phase that finished while you were away completes on load
 - 🌧 Ambient sounds — procedural rain / waves / campfire / brown noise (Web Audio, zero audio files) with a volume slider; plays during focus sessions
 - 🎯 Daily goal — set a mikan target for the day, watch the progress bar fill (streak counter 🔥 included)
+- 🍊 Goal remaining — the goal card shows how many mikans are left to today's target (あと N こ; counts down with every session, follows the target setting, and hides once you get there)
 - 📖 Session log — every finished focus session is recorded (time, task, minutes)
 - 📝 Session notes — attach a one-line memo to any session in the log (edit inline, saved with your data, included in backups)
 - 🔍 Log filter — narrow the session log down to a single task (or「タスクなし」) with the dropdown in the log card
@@ -36,7 +37,7 @@ A tiny pomodoro timer with a pixel-art mikan tree that grows as you complete foc
 - 📋 Task list — each focus session adds a 🍊 to the active task (saved locally); rename any task in place with ✎
 - 🌳 Pixel-art mikan tree drawn on canvas — 6 growth stages
 - 🎨 Theme — light / dark / auto (follows your OS), remembered with your data
-- 📊 Stats: sessions today / total / focus minutes + 7-day bar chart (canvas)
+- 📊 Stats: sessions today / today's focus minutes / total / focus minutes + 7-day bar chart (canvas)
 - 💾 Backup export / import (JSON) — your data stays yours
 - 📊 CSV export — write the whole session log (date, time, minutes, task, note) out as a spreadsheet-friendly CSV (BOM, Excel-safe)
 - 🔔 Chime (Web Audio, no files) + desktop notifications
@@ -57,7 +58,7 @@ python3 -m http.server 3964
 
 ## Test
 
-E2E suite (Playwright, headless Chromium) — 191 checks covering timer, tasks (incl. rename), chart, persistence, export/import, daily goal + confetti, session log, session notes, focus presets, achievement badges (grid, unlocks, toasts, persistence, import recompute), CSV session-log export, ambient sound engine (incl. 0% = silent), dark theme (apply / persist / theme-color), timer-state persistence (running & paused resume across reload, away-finished session completes on load), shortcut help overlay (? key / button / Esc / input guard), log filter by task (options, per-task, no-task, empty hint), tree PNG export (download / signature / dimensions), log search (task/note, case-insensitive, filter combo, query hint, clear button), log summary line, task reorder (edge states, persistence, active task kept), log day groups (今日 / きのう / date headers), log entry delete (✕ → けす？ confirm, re-render disarm, filtered delete, persistence), log day totals (count + minutes, follows the search), undo a deleted entry (とりけし toast, time-ordered restore, latest-delete-only, 5s auto-hide, gone on reload), preset hotkeys (1〜4, input guard), PWA (manifest, service worker, offline reload):
+E2E suite (Playwright, headless Chromium) — 202 checks covering timer, tasks (incl. rename), chart, persistence, export/import, daily goal + confetti, session log, session notes, focus presets, achievement badges (grid, unlocks, toasts, persistence, import recompute), CSV session-log export, ambient sound engine (incl. 0% = silent), dark theme (apply / persist / theme-color), timer-state persistence (running & paused resume across reload, away-finished session completes on load), shortcut help overlay (? key / button / Esc / input guard), log filter by task (options, per-task, no-task, empty hint), tree PNG export (download / signature / dimensions), log search (task/note, case-insensitive, filter combo, query hint, clear button), log summary line, task reorder (edge states, persistence, active task kept), log day groups (今日 / きのう / date headers), log entry delete (✕ → けす？ confirm, re-render disarm, filtered delete, persistence), log day totals (count + minutes, follows the search), undo a deleted entry (とりけし toast, time-ordered restore, latest-delete-only, 5s auto-hide, gone on reload), preset hotkeys (1〜4, input guard), goal remaining line (あと N こ, hidden at the target, follows the goal setting), today's-minutes stat (live, follows import), PWA (manifest, service worker, offline reload):
 
 ```bash
 uv run --with playwright python tests/e2e.py
@@ -73,6 +74,8 @@ uv run --with playwright python tests/e2e.py
 Made for [Hack Club Embassy](https://embassy.hackclub.com/).
 
 ## Changelog
+
+- **v1.17** — 目標のこり表示 + 今日の集中（分）: the daily-goal card now shows how many mikans are left to today's target (あと N こ — counts down with every session, follows the goal setting, and hides once the target is reached); the stats row gains a 今日の集中（分） card so today's focus minutes are visible at a glance (live from your day totals, and correct after a backup import); E2E suite extended to 202 checks
 
 - **v1.16** — きろくの日別合計 + 削除のとりけし: every day group header in the session log now shows that day's entry count and total minutes (recomputed under the task filter / search, so it always matches what's on screen); deleting a log entry now pops a とりけし toast — one click brings the entry back at its time-ordered position (only the most recent delete can be undone, the toast hides after 5 seconds, and it is session-only); E2E suite extended to 191 checks
 
