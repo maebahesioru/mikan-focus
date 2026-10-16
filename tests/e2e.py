@@ -17,6 +17,9 @@ tree PNG export (download, signature, 640x404, content size),
 v1.14: session-log search (task/note substring, case-insensitive, combined with the
 task filter, empty hint, clear button), filtered-log summary line (count + total minutes),
 task reorder (↑/↓ buttons, edge disabled states, persistence, no active-task change).
+v1.15: session-log day groups (今日 / きのう / date headers), per-entry delete
+(✕ -> けす？ two-click confirm, re-render disarms, filtered delete removes the right
+entry, persists across reload), preset hotkeys 1-4 (15/25/45/60分, input guard).
 Plus PWA phase (HTTP-served): manifest, service worker registration, cache
 population, offline reload, install button.
 """
@@ -560,10 +563,13 @@ async def main():
             "!document.getElementById('shortcutOverlay').hidden")
         check("? opens the shortcut overlay", results["shortcut_open"] is True)
         results["shortcut_rows"] = await page.locator(".shortcut-list li").count()
-        check("overlay lists 7 shortcuts", results["shortcut_rows"] == 7, str(results["shortcut_rows"]))
+        check("overlay lists 8 shortcuts", results["shortcut_rows"] == 8, str(results["shortcut_rows"]))
         results["shortcut_space_row"] = await page.locator(".shortcut-list li").nth(0).text_content()
         check("space row describes start/pause", "スタート" in results["shortcut_space_row"],
               results["shortcut_space_row"])
+        results["shortcut_preset_row"] = await page.locator(".shortcut-list li").nth(4).text_content()
+        check("overlay documents the 1〜4 presets", "1〜4" in results["shortcut_preset_row"],
+              results["shortcut_preset_row"])
         await page.keyboard.press("Escape")
         await page.wait_for_timeout(250)
         results["shortcut_esc"] = await page.evaluate(
@@ -743,6 +749,127 @@ async def main():
         check("↓ moves it back", results["reorder_back"] == "復元タスク,フィルタ用", results["reorder_back"])
         check("↓ also keeps the active task", results["active_after_down"] == results["active_before_reorder"],
               str(results["active_after_down"]))
+
+        # 16. v1.15: log day groups + per-entry delete + preset hotkeys
+        # 16a. day group headers (all entries so far are from today)
+        results["day_headers"] = await page.locator(".log-day").count()
+        results["day_first_label"] = await page.locator(".log-day").nth(0).text_content()
+        check("log day header for today",
+              results["day_headers"] == 1 and results["day_first_label"] == "今日",
+              f"{results['day_headers']} / {results['day_first_label']}")
+        # seed a yesterday + an older entry (deterministic timestamps)
+        await page.evaluate(
+            """() => {
+                 data.history.push({ t: Date.now() - 86400000, mins: 25, task: 'きのうタスク' });
+                 data.history.push({ t: Date.now() - 5 * 86400000, mins: 25, task: 'おととい以前' });
+                 saveData(); renderLog();
+               }"""
+        )
+        await page.wait_for_timeout(250)
+        results["day_headers2"] = await page.locator(".log-day").count()
+        results["day_labels"] = await page.evaluate(
+            "[...document.querySelectorAll('.log-day')].map(x => x.textContent).join(',')")
+        _d5 = datetime.date.today() - datetime.timedelta(days=5)
+        _exp_old = f"{_d5.month}月{_d5.day}日（{'月火水木金土日'[_d5.weekday()]}）"
+        check("day headers group entries (今日 / きのう / date)",
+              results["day_headers2"] == 3 and results["day_labels"] == f"今日,きのう,{_exp_old}",
+              f"{results['day_headers2']} / {results['day_labels']}")
+        results["day_rows_kept"] = await page.locator(".log-item").count()
+        check("day headers do not add log rows", results["day_rows_kept"] == 5,
+              str(results["day_rows_kept"]))
+
+        # 16b. per-entry delete (two-click confirm)
+        results["del_btns"] = await page.locator(".log-del").count()
+        check("every log row has a delete button", results["del_btns"] == 5, str(results["del_btns"]))
+        hist_before = await page.evaluate("data.history.length")
+        await page.locator(".log-del").nth(0).click()
+        await page.wait_for_timeout(200)
+        results["del_armed_text"] = await page.locator(".log-del").nth(0).text_content()
+        results["del_armed_hist"] = await page.evaluate("data.history.length")
+        check("first click arms the delete (けす？) without removing",
+              results["del_armed_text"] == "けす？" and results["del_armed_hist"] == hist_before,
+              f"{results['del_armed_text']} / {results['del_armed_hist']}")
+        await page.evaluate("renderLog()")
+        await page.wait_for_timeout(200)
+        results["del_disarmed_text"] = await page.locator(".log-del").nth(0).text_content()
+        check("re-render disarms the delete button", results["del_disarmed_text"] == "✕",
+              results["del_disarmed_text"])
+        await page.locator(".log-del").nth(0).click()
+        await page.wait_for_timeout(200)
+        await page.locator(".log-del").nth(0).click()
+        await page.wait_for_timeout(300)
+        results["del_hist_after"] = await page.evaluate("data.history.length")
+        results["del_rows_after"] = await page.locator(".log-item").count()
+        results["del_summary_after"] = await page.text_content("#logSummary")
+        check("second click deletes the entry",
+              results["del_hist_after"] == hist_before - 1 and results["del_rows_after"] == hist_before - 1,
+              f"{results['del_hist_after']} / {results['del_rows_after']}")
+        check("log summary reflects the deletion",
+              results["del_summary_after"] == f"ぜんぶで {hist_before - 1}件 ・ 合計 {(hist_before - 1) * 25}分",
+              results["del_summary_after"])
+        await page.reload()
+        await page.wait_for_timeout(400)
+        results["del_persist"] = await page.evaluate("data.history.length")
+        check("deletion persists after reload", results["del_persist"] == hist_before - 1,
+              str(results["del_persist"]))
+        results["day_headers_reload"] = await page.locator(".log-day").count()
+        check("day groups still render after reload", results["day_headers_reload"] == 3,
+              str(results["day_headers_reload"]))
+        # delete under a task filter removes exactly that entry
+        await page.evaluate(
+            """() => {
+                 const h = data.history.find(x => x.task === '復元タスク');
+                 h.note = 'DELME'; saveData(); renderLog();
+               }"""
+        )
+        await page.select_option("#logFilter", "復元タスク")
+        await page.wait_for_timeout(250)
+        results["del_filter_rows0"] = await page.locator(".log-item").count()
+        await page.locator(".log-del").nth(0).click()
+        await page.wait_for_timeout(200)
+        await page.locator(".log-del").nth(0).click()
+        await page.wait_for_timeout(300)
+        results["del_filter_rows1"] = await page.locator(".log-item").count()
+        results["del_marker_gone"] = await page.evaluate("data.history.every(x => x.note !== 'DELME')")
+        results["del_filter_left"] = await page.evaluate(
+            "data.history.filter(x => x.task === '復元タスク').length")
+        check("filtered delete removes exactly that entry",
+              results["del_filter_rows0"] == 2 and results["del_filter_rows1"] == 1
+              and results["del_marker_gone"] is True and results["del_filter_left"] == 1,
+              f"{results['del_filter_rows0']}->{results['del_filter_rows1']} / "
+              f"{results['del_marker_gone']} / {results['del_filter_left']}")
+        await page.select_option("#logFilter", "all")
+        await page.wait_for_timeout(250)
+        results["del_rows_final"] = await page.locator(".log-item").count()
+        check("filter back to all shows the remaining rows", results["del_rows_final"] == 3,
+              str(results["del_rows_final"]))
+
+        # 16c. preset hotkeys 1-4
+        await page.evaluate(
+            "setMode('work'); render(); if (document.activeElement) document.activeElement.blur();")
+        await page.wait_for_timeout(150)
+        await page.keyboard.press("3")
+        await page.wait_for_timeout(250)
+        results["preset3_min"] = await page.input_value("#workMin")
+        results["preset3_disp"] = await page.text_content("#timeDisplay")
+        results["preset3_pressed"] = await page.evaluate(
+            "[...document.querySelectorAll('.preset-btn')].find(b => b.dataset.min === '45')"
+            ".getAttribute('aria-pressed')")
+        check("key 3 sets the 45分 preset",
+              results["preset3_min"] == "45" and results["preset3_disp"] == "45:00"
+              and results["preset3_pressed"] == "true",
+              f"{results['preset3_min']} / {results['preset3_disp']} / {results['preset3_pressed']}")
+        await page.keyboard.press("1")
+        await page.wait_for_timeout(250)
+        results["preset1_disp"] = await page.text_content("#timeDisplay")
+        check("key 1 sets the 15分 preset", results["preset1_disp"] == "15:00", results["preset1_disp"])
+        # typing digits into an input must not change the preset
+        await page.click("#taskInput")
+        await page.keyboard.type("3")
+        await page.wait_for_timeout(250)
+        results["preset_input_guard"] = await page.input_value("#workMin")
+        check("typing 3 in an input does not change the preset", results["preset_input_guard"] == "15",
+              results["preset_input_guard"])
 
         results["js_errors"] = errors
         check("no JS errors", len(errors) == 0, "; ".join(errors[:3]))

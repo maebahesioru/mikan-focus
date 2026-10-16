@@ -214,6 +214,17 @@
   }
   #logSearchClear:hover { background: #ecdcb2; }
   .log-summary { font-size: 0.78rem; color: var(--dim); margin-bottom: 8px; text-align: right; }
+  /* きろくの日付グループ + 1件削除 (v1.15) */
+  .log-day {
+    font-size: 0.72rem; font-weight: 700; color: var(--dim); letter-spacing: 0.04em;
+    padding: 8px 2px 2px; list-style: none;
+  }
+  .log-del {
+    border: none; background: none; cursor: pointer; color: var(--dim);
+    font-size: 0.72rem; padding: 2px 7px; border-radius: 8px; line-height: 1.4;
+  }
+  .log-del:hover { background: #f2e6c8; color: #c0392b; }
+  .log-del.armed { background: #c0392b; color: #fff; font-weight: 700; }
   /* タスク並べ替え (v1.14) */
   .t-move {
     border: none; background: none; cursor: pointer; font-size: 0.85rem; color: var(--dim);
@@ -302,6 +313,7 @@
   body.dark .dot { border-color: #4a4128; }
   body.dark .log-note { color: #c9b98a; }
   body.dark .log-name.none { color: #9a8c66; }
+  body.dark .log-del:hover { background: #3a3320; }
   /* タスク名変更 (v1.12) */
   .t-edit {
     border: none; background: none; cursor: pointer; font-size: 0.9rem; color: var(--dim);
@@ -472,7 +484,7 @@
     </details>
   </div>
 
-  <footer>みかんフォーカス v1.14 — Embassy プロジェクト / データはブラウザに保存されます</footer>
+  <footer>みかんフォーカス v1.15 — Embassy プロジェクト / データはブラウザに保存されます</footer>
 </div>
 <div id="shortcutOverlay" hidden>
   <div class="shortcut-panel" role="dialog" aria-modal="true" aria-label="キーボードショートカット一覧">
@@ -482,6 +494,7 @@
       <li><span>タイマーをリセット</span><kbd>R</kbd></li>
       <li><span>フェーズをスキップ</span><kbd>S</kbd></li>
       <li><span>5分延長</span><kbd>＋</kbd></li>
+      <li><span>集中時間プリセット（15/25/45/60分）</span><kbd>1〜4</kbd></li>
       <li><span>集中モード（Zen）切替</span><kbd>Z</kbd></li>
       <li><span>このヘルプを表示</span><kbd>?</kbd></li>
       <li><span>閉じる / 集中モード終了</span><kbd>Esc</kbd></li>
@@ -1087,6 +1100,9 @@ helpBtn.addEventListener('click', () => setShortcuts(shortcutOverlay.hidden));
 document.getElementById('shortcutCloseBtn').addEventListener('click', () => setShortcuts(false));
 shortcutOverlay.addEventListener('click', (e) => { if (e.target === shortcutOverlay) setShortcuts(false); });
 
+// v1.15: 1〜4キーで集中時間プリセット（15/25/45/60分）
+const PRESET_KEY_MIN = { '1': 15, '2': 25, '3': 45, '4': 60 };
+
 document.addEventListener('keydown', (e) => {
   if (e.target.closest('input, textarea, select')) return;
   const overlayOpen = !shortcutOverlay.hidden;
@@ -1102,6 +1118,10 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 's' || e.key === 'S') { skipPhase(); }
   else if (e.key === 'z' || e.key === 'Z') { setZen(!document.body.classList.contains('zen')); }
   else if (e.key === '+' || e.key === '=') { extendTimer(); }
+  else if (PRESET_KEY_MIN[e.key]) { // v1.15: プリセットキー
+    const b = presetBtns.find(x => parseInt(x.dataset.min, 10) === PRESET_KEY_MIN[e.key]);
+    if (b) b.click();
+  }
 });
 
 // ===== 設定 =====
@@ -1706,8 +1726,40 @@ function fmtWhen(ts) {
   return `${dt.getMonth() + 1}/${dt.getDate()} ${dt.getHours()}:${mm}`;
 }
 
+// ===== v1.15: きろくの日付グループ（今日 / きのう / M月D日（曜）） =====
+function dayLabel(ts) {
+  const dt = new Date(ts);
+  const key = dayKey(dt);
+  const today = new Date();
+  if (key === dayKey(today)) return '今日';
+  const y = new Date(today);
+  y.setDate(y.getDate() - 1);
+  if (key === dayKey(y)) return 'きのう';
+  return `${dt.getMonth() + 1}月${dt.getDate()}日（${'日月火水木金土'[dt.getDay()]}）`;
+}
+
+// ===== v1.15: きろくを1件だけ消す（2回クリックで確認） =====
+let deleteArmed = null; // 確認待ちのきろく（オブジェクト参照）
+function disarmDelete() {
+  deleteArmed = null;
+  for (const b of logListEl.querySelectorAll('.log-del.armed')) {
+    b.classList.remove('armed');
+    b.textContent = '✕';
+    b.setAttribute('aria-label', 'このきろくを消す');
+  }
+}
+function deleteLogEntry(h) {
+  const idx = (data.history || []).indexOf(h);
+  if (idx < 0) return;
+  data.history.splice(idx, 1);
+  editingNote = null;
+  saveData();
+  renderLog();
+}
+
 function renderLog() {
   const all = data.history || [];
+  deleteArmed = null; // v1.15: 再描画で削除の確認待ちはリセット
   // v1.13: タスクで絞り込み（__none__ = タスクなし）/ v1.14: 検索（タスク名・メモ、大文字小文字を無視）
   const q = logQuery.trim().toLowerCase();
   const items = all.filter(h => {
@@ -1728,7 +1780,17 @@ function renderLog() {
     ? `しぼりこみ中: ${items.length}件 ・ 合計 ${totalMin}分`
     : `ぜんぶで ${items.length}件 ・ 合計 ${totalMin}分`;
   const slice = items.slice(0, logShown);
+  let lastDay = null;
   slice.forEach((h, i) => {
+    // v1.15: 日付が変わったらグループ見出しを挟む
+    const dk = dayKey(new Date(h.t));
+    if (dk !== lastDay) {
+      lastDay = dk;
+      const head = document.createElement('li');
+      head.className = 'log-day';
+      head.textContent = dayLabel(h.t);
+      logListEl.appendChild(head);
+    }
     const li = document.createElement('li');
     li.className = 'log-item';
     const when = document.createElement('span');
@@ -1741,6 +1803,24 @@ function renderLog() {
     mins.className = 'log-mins';
     mins.textContent = `🍊 +${h.mins}分`;
     li.append(when, name, mins);
+
+    // v1.15: きろくを1件だけ消す（2回クリックで確認）
+    const del = document.createElement('button');
+    del.className = 'log-del';
+    del.type = 'button';
+    del.textContent = '✕';
+    del.setAttribute('aria-label', 'このきろくを消す');
+    del.title = 'このきろくを消す';
+    del.addEventListener('click', () => {
+      if (deleteArmed === h) { deleteLogEntry(h); return; }
+      disarmDelete();
+      deleteArmed = h;
+      del.classList.add('armed');
+      del.textContent = 'けす？';
+      del.setAttribute('aria-label', 'もう一度押すとこのきろくを消します');
+      setTimeout(() => { if (deleteArmed === h) disarmDelete(); }, 3000);
+    });
+    li.appendChild(del);
 
     // v1.9: セッションメモ
     if (editingNote === i) {
