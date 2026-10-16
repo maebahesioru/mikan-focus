@@ -20,6 +20,9 @@ task reorder (↑/↓ buttons, edge disabled states, persistence, no active-task
 v1.15: session-log day groups (今日 / きのう / date headers), per-entry delete
 (✕ -> けす？ two-click confirm, re-render disarms, filtered delete removes the right
 entry, persists across reload), preset hotkeys 1-4 (15/25/45/60分, input guard).
+v1.16: per-day totals on the day headers (count + minutes, recomputed from the
+filtered entries), undo for a deleted entry (とりけし toast, restores at its
+time-ordered position, only the latest delete, auto-hides after 5s, gone on reload).
 Plus PWA phase (HTTP-served): manifest, service worker registration, cache
 population, offline reload, install button.
 """
@@ -750,10 +753,10 @@ async def main():
         check("↓ also keeps the active task", results["active_after_down"] == results["active_before_reorder"],
               str(results["active_after_down"]))
 
-        # 16. v1.15: log day groups + per-entry delete + preset hotkeys
+        # 16. v1.15: log day groups + per-entry delete + preset hotkeys / v1.16: day totals + undo
         # 16a. day group headers (all entries so far are from today)
         results["day_headers"] = await page.locator(".log-day").count()
-        results["day_first_label"] = await page.locator(".log-day").nth(0).text_content()
+        results["day_first_label"] = await page.locator(".log-day .day-label").nth(0).text_content()
         check("log day header for today",
               results["day_headers"] == 1 and results["day_first_label"] == "今日",
               f"{results['day_headers']} / {results['day_first_label']}")
@@ -768,7 +771,7 @@ async def main():
         await page.wait_for_timeout(250)
         results["day_headers2"] = await page.locator(".log-day").count()
         results["day_labels"] = await page.evaluate(
-            "[...document.querySelectorAll('.log-day')].map(x => x.textContent).join(',')")
+            "[...document.querySelectorAll('.log-day .day-label')].map(x => x.textContent).join(',')")
         _d5 = datetime.date.today() - datetime.timedelta(days=5)
         _exp_old = f"{_d5.month}月{_d5.day}日（{'月火水木金土日'[_d5.weekday()]}）"
         check("day headers group entries (今日 / きのう / date)",
@@ -777,6 +780,23 @@ async def main():
         results["day_rows_kept"] = await page.locator(".log-item").count()
         check("day headers do not add log rows", results["day_rows_kept"] == 5,
               str(results["day_rows_kept"]))
+        # v1.16: every day header carries that day's count + total minutes
+        results["day_totals"] = await page.evaluate(
+            "[...document.querySelectorAll('.log-day .day-total')].map(x => x.textContent).join(',')")
+        results["day_totals_expected"] = await page.evaluate(
+            """() => {
+                 const m = new Map();
+                 for (const h of data.history) {
+                   const k = dayKey(new Date(h.t));
+                   const d = m.get(k) || { count: 0, mins: 0 };
+                   d.count += 1; d.mins += (h.mins || 0); m.set(k, d);
+                 }
+                 return [...m.values()].map(d => d.count + '件 ・ ' + d.mins + '分').join(',');
+               }""")
+        check("day headers carry per-day totals (count + minutes)",
+              results["day_totals"] == results["day_totals_expected"]
+              and results["day_totals"] == "3件 ・ 75分,1件 ・ 25分,1件 ・ 25分",
+              f"{results['day_totals']} vs {results['day_totals_expected']}")
 
         # 16b. per-entry delete (two-click confirm)
         results["del_btns"] = await page.locator(".log-del").count()
@@ -870,6 +890,88 @@ async def main():
         results["preset_input_guard"] = await page.input_value("#workMin")
         check("typing 3 in an input does not change the preset", results["preset_input_guard"] == "15",
               results["preset_input_guard"])
+
+        # 16d. v1.16: day totals recompute with the search
+        await page.fill("#logSearch", "きのうタスク")
+        await page.wait_for_timeout(250)
+        results["tot_search"] = await page.evaluate(
+            "[...document.querySelectorAll('.log-day')].map(x => x.querySelector('.day-label').textContent"
+            " + '|' + x.querySelector('.day-total').textContent).join(',')")
+        check("day totals follow the search filter", results["tot_search"] == "きのう|1件 ・ 25分",
+              results["tot_search"])
+        await page.click("#logSearchClear")
+        await page.wait_for_timeout(250)
+
+        # 16e. v1.16: undo a deleted entry (とりけし)
+        hist_undo = await page.evaluate("data.history.length")
+        t_first = await page.evaluate("data.history[0].t")
+        await page.evaluate("document.getElementById('logList').scrollIntoView({block: 'center'})")
+        await page.locator(".log-del").nth(0).click()
+        await page.wait_for_timeout(150)
+        await page.locator(".log-del").nth(0).click()
+        await page.wait_for_timeout(300)
+        results["undo_hist_after_del"] = await page.evaluate("data.history.length")
+        results["undo_toast_count"] = await page.locator("#logUndoToast").count()
+        results["undo_toast_text"] = await page.text_content("#logUndoToast")
+        results["undo_btn_text"] = await page.text_content("#logUndoBtn")
+        check("deleting an entry shows the undo toast",
+              results["undo_hist_after_del"] == hist_undo - 1
+              and results["undo_toast_count"] == 1
+              and results["undo_btn_text"] == "とりけし"
+              and "1件消しました" in (results["undo_toast_text"] or ""),
+              f"{results['undo_hist_after_del']} / {results['undo_toast_count']} / {results['undo_toast_text']}")
+        await page.click("#logUndoBtn")
+        await page.wait_for_timeout(300)
+        results["undo_hist_restored"] = await page.evaluate("data.history.length")
+        results["undo_t_restored"] = await page.evaluate("data.history[0].t")
+        results["undo_toast_gone"] = await page.locator("#logUndoToast").count()
+        check("とりけし restores the entry in its original place",
+              results["undo_hist_restored"] == hist_undo and results["undo_t_restored"] == t_first,
+              f"{results['undo_hist_restored']} / {results['undo_t_restored']} vs {t_first}")
+        check("the undo toast disappears after とりけし", results["undo_toast_gone"] == 0,
+              str(results["undo_toast_gone"]))
+        await page.reload()
+        await page.wait_for_timeout(400)
+        results["undo_persist"] = await page.evaluate("data.history.length")
+        results["undo_toast_reload"] = await page.locator("#logUndoToast").count()
+        check("the restored entry persists after reload", results["undo_persist"] == hist_undo,
+              str(results["undo_persist"]))
+        check("the undo toast does not survive a reload", results["undo_toast_reload"] == 0,
+              str(results["undo_toast_reload"]))
+        # only the most recent delete is undoable
+        await page.evaluate("document.getElementById('logList').scrollIntoView({block: 'center'})")
+        t_a = await page.evaluate("data.history[0].t")
+        t_b = await page.evaluate("data.history[1].t")
+        await page.locator(".log-del").nth(0).click()
+        await page.wait_for_timeout(150)
+        await page.locator(".log-del").nth(0).click()
+        await page.wait_for_timeout(250)
+        await page.locator(".log-del").nth(0).click()
+        await page.wait_for_timeout(150)
+        await page.locator(".log-del").nth(0).click()
+        await page.wait_for_timeout(250)
+        results["undo_chain_toasts"] = await page.locator("#logUndoToast").count()
+        check("a second delete replaces the undo toast", results["undo_chain_toasts"] == 1,
+              str(results["undo_chain_toasts"]))
+        await page.click("#logUndoBtn")
+        await page.wait_for_timeout(300)
+        results["undo_chain_hist"] = await page.evaluate("data.history.map(x => x.t).join(',')")
+        _chain = results["undo_chain_hist"].split(",")
+        check("とりけし only brings back the latest deleted entry",
+              _chain.count(str(t_b)) == 1 and str(t_a) not in _chain,
+              f"a={t_a} b={t_b} / {results['undo_chain_hist']}")
+        # the toast auto-hides after 5s
+        await page.evaluate("document.getElementById('logList').scrollIntoView({block: 'center'})")
+        await page.locator(".log-del").nth(0).click()
+        await page.wait_for_timeout(150)
+        await page.locator(".log-del").nth(0).click()
+        await page.wait_for_timeout(300)
+        results["undo_timeout_visible"] = await page.locator("#logUndoToast").count()
+        await page.wait_for_timeout(5200)
+        results["undo_timeout_gone"] = await page.locator("#logUndoToast").count()
+        check("the undo toast auto-hides after 5s",
+              results["undo_timeout_visible"] == 1 and results["undo_timeout_gone"] == 0,
+              f"{results['undo_timeout_visible']} -> {results['undo_timeout_gone']}")
 
         results["js_errors"] = errors
         check("no JS errors", len(errors) == 0, "; ".join(errors[:3]))

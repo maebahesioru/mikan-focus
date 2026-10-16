@@ -214,11 +214,13 @@
   }
   #logSearchClear:hover { background: #ecdcb2; }
   .log-summary { font-size: 0.78rem; color: var(--dim); margin-bottom: 8px; text-align: right; }
-  /* きろくの日付グループ + 1件削除 (v1.15) */
+  /* きろくの日付グループ + 1件削除 (v1.15) / 日別合計 (v1.16) */
   .log-day {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
     font-size: 0.72rem; font-weight: 700; color: var(--dim); letter-spacing: 0.04em;
     padding: 8px 2px 2px; list-style: none;
   }
+  .log-day .day-total { font-weight: 400; letter-spacing: 0; font-variant-numeric: tabular-nums; }
   .log-del {
     border: none; background: none; cursor: pointer; color: var(--dim);
     font-size: 0.72rem; padding: 2px 7px; border-radius: 8px; line-height: 1.4;
@@ -283,6 +285,19 @@
     padding: 10px 18px; border-radius: 999px; white-space: nowrap;
     box-shadow: 0 6px 20px rgba(74, 56, 0, 0.3); animation: toastIn 0.35s ease;
   }
+  /* 削除のとりけしトースト (v1.16) */
+  .undo-toast {
+    pointer-events: auto; display: flex; align-items: center; gap: 10px;
+    background: #4a3800; color: #fff8e7; font-size: 0.82rem;
+    padding: 8px 10px 8px 16px; border-radius: 999px; white-space: nowrap;
+    box-shadow: 0 6px 20px rgba(74, 56, 0, 0.3); animation: toastIn 0.35s ease;
+  }
+  .undo-toast button {
+    border: none; background: #ffd98a; color: #4a3800; font-weight: 700;
+    border-radius: 999px; padding: 4px 12px; cursor: pointer;
+    font-family: inherit; font-size: 0.8rem;
+  }
+  .undo-toast button:hover { background: #ffe8b0; }
   @keyframes toastIn { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
   /* 紙吹雪 */
   #confettiCanvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99; }
@@ -1748,12 +1763,53 @@ function disarmDelete() {
     b.setAttribute('aria-label', 'このきろくを消す');
   }
 }
+
+// ===== v1.16: 消したきろくのとりけし（直前の1件・5秒間） =====
+let lastDeleted = null; // { h, idx }
+let undoToastTimer = null;
+function clearUndoToast() {
+  if (undoToastTimer) { clearTimeout(undoToastTimer); undoToastTimer = null; }
+  const el = document.getElementById('logUndoToast');
+  if (el) el.remove();
+}
+function showUndoToast(h) {
+  clearUndoToast();
+  const wrap = document.getElementById('badgeToastWrap');
+  if (!wrap) return;
+  const el = document.createElement('div');
+  el.id = 'logUndoToast';
+  el.className = 'undo-toast';
+  const msg = document.createElement('span');
+  msg.textContent = `🗑 きろくを1件消しました（${h.mins}分）`;
+  const btn = document.createElement('button');
+  btn.id = 'logUndoBtn';
+  btn.type = 'button';
+  btn.textContent = 'とりけし';
+  btn.addEventListener('click', undoDelete);
+  el.append(msg, btn);
+  wrap.appendChild(el);
+  undoToastTimer = setTimeout(clearUndoToast, 5000);
+}
+function undoDelete() {
+  if (!lastDeleted) return;
+  const { h } = lastDeleted;
+  lastDeleted = null;
+  // きろくは新しい順（先頭が最新）— 時刻順の正しい位置に差し戻す
+  let idx = (data.history || []).findIndex((x) => (x.t || 0) < (h.t || 0));
+  if (idx < 0) idx = data.history.length;
+  data.history.splice(idx, 0, h);
+  clearUndoToast();
+  saveData();
+  renderLog();
+}
 function deleteLogEntry(h) {
   const idx = (data.history || []).indexOf(h);
   if (idx < 0) return;
   data.history.splice(idx, 1);
+  lastDeleted = { h }; // v1.16: とりけし用に控える
   editingNote = null;
   saveData();
+  showUndoToast(h); // v1.16
   renderLog();
 }
 
@@ -1780,15 +1836,31 @@ function renderLog() {
     ? `しぼりこみ中: ${items.length}件 ・ 合計 ${totalMin}分`
     : `ぜんぶで ${items.length}件 ・ 合計 ${totalMin}分`;
   const slice = items.slice(0, logShown);
+  // v1.16: 日付ごとの合計（件数・分）— しぼりこみ後の items で集計
+  const dayTotals = new Map();
+  for (const h of items) {
+    const k = dayKey(new Date(h.t));
+    const d = dayTotals.get(k) || { count: 0, mins: 0 };
+    d.count += 1;
+    d.mins += (h.mins || 0);
+    dayTotals.set(k, d);
+  }
   let lastDay = null;
   slice.forEach((h, i) => {
-    // v1.15: 日付が変わったらグループ見出しを挟む
+    // v1.15: 日付が変わったらグループ見出しを挟む / v1.16: その日の合計つき
     const dk = dayKey(new Date(h.t));
     if (dk !== lastDay) {
       lastDay = dk;
       const head = document.createElement('li');
       head.className = 'log-day';
-      head.textContent = dayLabel(h.t);
+      const lab = document.createElement('span');
+      lab.className = 'day-label';
+      lab.textContent = dayLabel(h.t);
+      const tot = document.createElement('span');
+      tot.className = 'day-total';
+      const d = dayTotals.get(dk) || { count: 0, mins: 0 };
+      tot.textContent = `${d.count}件 ・ ${d.mins}分`;
+      head.append(lab, tot);
       logListEl.appendChild(head);
     }
     const li = document.createElement('li');
