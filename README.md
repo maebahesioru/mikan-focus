@@ -26,8 +26,8 @@ A tiny pomodoro timer with a pixel-art mikan tree that grows as you complete foc
 - 🔍 Log filter — narrow the session log down to a single task (or「タスクなし」) with the dropdown in the log card
 - 🔎 Log search — a search box narrows the log by task name or memo text (case-insensitive substring, combines with the task filter)
 - 🧮 Log summary — the log card shows the entry count and total focus minutes the current filter + search covers
-- 🗓 Log day groups — the session log is split into 今日 / きのう / M月D日（曜） sections so days are easy to scan
-- 🗑 Log entry delete — remove a single session with the ✕ button (two-click confirm: けす？, auto-disarms; works under filters and search)
+- 🗓 Log day groups — the session log is split into 今日 / きのう / M月D日（曜） sections so days are easy to scan (each day header also shows that day's entry count + total minutes)
+- 🗑 Log entry delete — remove a single session with the ✕ button (two-click confirm: けす？, auto-disarms; works under filters and search); a とりけし toast appears for 5 seconds so an accidental delete can be brought back
 - ↕️ Task reorder — move tasks up / down with ↑/↓ buttons (disabled at the ends, order is saved)
 - 📷 Tree PNG export — save your mikan tree as a 2x pixel-perfect PNG (caption: total sessions / today's mikans / date)
 - ⌨️ Shortcut help — press `?` (or the ⌨ button) for an overlay of every keyboard shortcut; `Esc` / backdrop / とじる closes it
@@ -57,7 +57,7 @@ python3 -m http.server 3964
 
 ## Test
 
-E2E suite (Playwright, headless Chromium) — 181 checks covering timer, tasks (incl. rename), chart, persistence, export/import, daily goal + confetti, session log, session notes, focus presets, achievement badges (grid, unlocks, toasts, persistence, import recompute), CSV session-log export, ambient sound engine (incl. 0% = silent), dark theme (apply / persist / theme-color), timer-state persistence (running & paused resume across reload, away-finished session completes on load), shortcut help overlay (? key / button / Esc / input guard), log filter by task (options, per-task, no-task, empty hint), tree PNG export (download / signature / dimensions), log search (task/note, case-insensitive, filter combo, query hint, clear button), log summary line, task reorder (edge states, persistence, active task kept), log day groups (今日 / きのう / date headers), log entry delete (✕ → けす？ confirm, re-render disarm, filtered delete, persistence), preset hotkeys (1〜4, input guard), PWA (manifest, service worker, offline reload):
+E2E suite (Playwright, headless Chromium) — 191 checks covering timer, tasks (incl. rename), chart, persistence, export/import, daily goal + confetti, session log, session notes, focus presets, achievement badges (grid, unlocks, toasts, persistence, import recompute), CSV session-log export, ambient sound engine (incl. 0% = silent), dark theme (apply / persist / theme-color), timer-state persistence (running & paused resume across reload, away-finished session completes on load), shortcut help overlay (? key / button / Esc / input guard), log filter by task (options, per-task, no-task, empty hint), tree PNG export (download / signature / dimensions), log search (task/note, case-insensitive, filter combo, query hint, clear button), log summary line, task reorder (edge states, persistence, active task kept), log day groups (今日 / きのう / date headers), log entry delete (✕ → けす？ confirm, re-render disarm, filtered delete, persistence), log day totals (count + minutes, follows the search), undo a deleted entry (とりけし toast, time-ordered restore, latest-delete-only, 5s auto-hide, gone on reload), preset hotkeys (1〜4, input guard), PWA (manifest, service worker, offline reload):
 
 ```bash
 uv run --with playwright python tests/e2e.py
@@ -68,10 +68,13 @@ uv run --with playwright python tests/e2e.py
 - All data stays in your browser (localStorage).
 - The tree growth is cumulative — 8 sessions = fully grown.
 - Task 🍊 counts start from when you create the task (sessions before v1.2 had no task).
+- Built with heavy AI assistance — most of the code and this README were written by an AI coding agent (Hermes), with the project owner directing, testing, and shipping it.
 
 Made for [Hack Club Embassy](https://embassy.hackclub.com/).
 
 ## Changelog
+
+- **v1.16** — きろくの日別合計 + 削除のとりけし: every day group header in the session log now shows that day's entry count and total minutes (recomputed under the task filter / search, so it always matches what's on screen); deleting a log entry now pops a とりけし toast — one click brings the entry back at its time-ordered position (only the most recent delete can be undone, the toast hides after 5 seconds, and it is session-only); E2E suite extended to 191 checks
 
 - **v1.15** — きろくの日付グループ + きろく1件削除 + プリセットキー: the session log is now grouped by day (今日 / きのう / M月D日（曜）headers); each entry has a ✕ delete button that asks for confirmation on the first click (けす？ — auto-disarms after 3s or on any re-render) and removes just that session on the second click (works under task filters / search, saved with your data); keys 1〜4 set the focus presets (15/25/45/60分) from the keyboard; E2E suite extended to 181 checks
 - **v1.14** — きろく検索 + きろくサマリー + タスク並べ替え: the session log gains a search box that filters by task name or memo (case-insensitive substring; combines with the task-filter dropdown; a no-match query shows its own hint, and ✕ / Esc clears it); the log card now reports how many entries and total minutes the current filter + search covers (しぼりこみ中 / ぜんぶで); tasks can be reordered with ↑/↓ buttons (disabled at the ends, order persists, the active task is untouched); E2E suite extended to 165 checks
